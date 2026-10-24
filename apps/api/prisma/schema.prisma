@@ -1,0 +1,567 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Users & Auth ────────────────────────────────────────────────────────────
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String
+  password  String
+  avatarUrl String?
+  isActive  Boolean  @default(true)
+  isAdmin   Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  refreshTokens  RefreshToken[]
+  memberships    SeriesMembership[]
+  uploadedAssets Asset[]
+  generationRuns GenerationRun[]
+  activityEvents ActivityEvent[]
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  revokedAt DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// ── Series ──────────────────────────────────────────────────────────────────
+
+model Series {
+  id         String   @id @default(cuid())
+  slug       String   @unique
+  name       String
+  premise    String   @default("")
+  posterUrl  String?
+  isArchived Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  memberships    SeriesMembership[]
+  bibleEntries   BibleEntry[]
+  worldEntities  WorldEntity[]
+  seasons        Season[]
+  assets         Asset[]
+  providerConfig LlmProviderConfig[]
+  generationRuns GenerationRun[]
+  activityEvents ActivityEvent[]
+}
+
+model SeriesMembership {
+  id        String     @id @default(cuid())
+  userId    String
+  seriesId  String
+  role      SeriesRole @default(VIEWER)
+  createdAt DateTime   @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  series Series @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, seriesId])
+  @@index([seriesId])
+}
+
+enum SeriesRole {
+  OWNER
+  ADMIN
+  WRITER
+  PRODUCER
+  VIEWER
+}
+
+// ── Story Bible ──────────────────────────────────────────────────────────────
+
+model BibleEntry {
+  id        String          @id @default(cuid())
+  seriesId  String
+  type      BibleEntryType
+  title     String
+  content   String          @default("")
+  position  Int             @default(0)
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
+
+  series Series @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+
+  @@unique([seriesId, type])
+  @@index([seriesId])
+}
+
+enum BibleEntryType {
+  PREMISE
+  THEMES
+  CANON_RULES
+  LORE
+  TIMELINE
+  CUSTOM
+}
+
+// ── World Entities ──────────────────────────────────────────────────────────
+
+model WorldEntity {
+  id          String            @id @default(cuid())
+  seriesId    String
+  type        WorldEntityType
+  displayName String
+  externalId  String?
+  subtitle    String            @default("")
+  description String            @default("")
+  status      WorldEntityStatus @default(ACTIVE)
+  color       String?
+  tags        String[]
+
+  // Character-specific
+  visualDescription String?
+  voiceDescription  String?
+  costumeDescription String?
+  mannerisms        String?
+  goals             String?
+  motivations       String?
+  fears             String?
+  biography         String?
+
+  // Location-specific
+  architectureNotes String?
+  moodNotes         String?
+  lightingNotes     String?
+  environmentNotes  String?
+  weatherNotes      String?
+  imagePrompt       String?
+  environmentPrompt String?
+  videoPrompt       String?
+
+  // Artifact-specific
+  origin       String?
+  currentOwner String?
+  importance   String?
+
+  // Organization-specific
+  purpose      String?
+  leadership   String?
+  members      String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  series        Series          @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  sceneEntities SceneEntity[]
+  clipEntities  ClipEntity[]
+  assetLinks    AssetEntityLink[]
+
+  @@unique([seriesId, externalId])
+  @@index([seriesId, type])
+  @@index([seriesId, displayName])
+}
+
+enum WorldEntityType {
+  CHARACTER
+  LOCATION
+  ARTIFACT
+  ORGANIZATION
+  TIMELINE_EVENT
+}
+
+enum WorldEntityStatus {
+  ACTIVE
+  INACTIVE
+  UNKNOWN
+  DECEASED
+  DESTROYED
+  MISSING
+  RESTRICTED
+  DISBANDED
+  CANON
+  DRAFT
+}
+
+// ── Manuscript Hierarchy ─────────────────────────────────────────────────────
+
+model Season {
+  id        String   @id @default(cuid())
+  seriesId  String
+  number    Int
+  title     String
+  synopsis  String?
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  series   Series    @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  episodes Episode[]
+
+  @@unique([seriesId, number])
+  @@index([seriesId])
+}
+
+model Episode {
+  id               String        @id @default(cuid())
+  seasonId         String
+  number           Int
+  title            String
+  synopsis         String        @default("")
+  status           EpisodeStatus @default(OUTLINE)
+  estimatedRuntime String?
+  progress         Int           @default(0)
+  position         Int           @default(0)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  acts   Act[]
+  scenes Scene[]
+
+  @@unique([seasonId, number])
+  @@index([seasonId])
+}
+
+enum EpisodeStatus {
+  OUTLINE
+  DRAFT
+  REVIEW
+  APPROVED
+  PRODUCTION
+  COMPLETE
+}
+
+model Act {
+  id        String   @id @default(cuid())
+  episodeId String
+  number    Int
+  title     String
+  summary   String?
+  purpose   String?
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  episode Episode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
+  scenes  Scene[]
+
+  @@unique([episodeId, number])
+  @@index([episodeId])
+}
+
+model Scene {
+  id         String      @id @default(cuid())
+  actId      String
+  episodeId  String
+  number     Int
+  title      String
+  summary    String      @default("")
+  purpose    String?
+  locationId String?
+  timeOfDay  String?
+  interior   Boolean     @default(true)
+  status     SceneStatus @default(DRAFT)
+  duration   String?
+  position   Int         @default(0)
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  act          Act           @relation(fields: [actId], references: [id], onDelete: Cascade)
+  episode      Episode       @relation(fields: [episodeId], references: [id])
+  scriptBlocks ScriptBlock[]
+  clips        Clip[]
+  characters   SceneEntity[]
+  assetLinks   AssetSceneLink[]
+
+  @@index([actId])
+  @@index([episodeId])
+}
+
+enum SceneStatus {
+  DRAFT
+  REVIEW
+  APPROVED
+  PRODUCTION
+  COMPLETE
+}
+
+model ScriptBlock {
+  id          String          @id @default(cuid())
+  sceneId     String
+  type        ScriptBlockType
+  content     String
+  characterId String?
+  position    Int             @default(0)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  scene Scene @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+
+  @@index([sceneId])
+}
+
+enum ScriptBlockType {
+  HEADING
+  ACTION
+  DIALOGUE
+  PARENTHETICAL
+  TRANSITION
+  NOTE
+}
+
+model Clip {
+  id              String     @id @default(cuid())
+  sceneId         String
+  number          Int
+  title           String
+  storyBeat       String     @default("")
+  action          String?
+  dialogue        String?
+  emotion         String?
+  duration        String?
+  targetDurationSec Int      @default(7)
+  cameraShot      String?
+  cameraAngle     String?
+  cameraMovement  String?
+  composition     String?
+  lens            String?
+  lighting        String?
+  voiceNotes      String?
+  ambientAudio    String?
+  sfx             String?
+  music           String?
+  imagePrompt     String?
+  videoPrompt     String?
+  voicePrompt     String?
+  audioPrompt     String?
+  negativePrompt  String?
+  status          ClipStatus @default(PLANNED)
+  position        Int        @default(0)
+  locationId      String?
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  scene          Scene           @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+  characters     ClipEntity[]
+  assetLinks     AssetClipLink[]
+  generationRuns GenerationRun[]
+
+  @@index([sceneId])
+}
+
+enum ClipStatus {
+  PLANNED
+  READY
+  GENERATED
+  REVIEW
+  APPROVED
+  FINAL
+}
+
+// ── Join tables for entity links ─────────────────────────────────────────────
+
+model SceneEntity {
+  sceneId  String
+  entityId String
+  scene    Scene       @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+  entity   WorldEntity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  @@id([sceneId, entityId])
+}
+
+model ClipEntity {
+  clipId   String
+  entityId String
+  clip     Clip        @relation(fields: [clipId], references: [id], onDelete: Cascade)
+  entity   WorldEntity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  @@id([clipId, entityId])
+}
+
+// ── Assets ───────────────────────────────────────────────────────────────────
+
+model Asset {
+  id          String      @id @default(cuid())
+  seriesId    String
+  type        AssetType
+  status      AssetStatus @default(PENDING)
+  title       String
+  description String?
+  tags        String[]
+  filename    String
+  storageKey  String      @unique
+  mimeType    String
+  sizeBytes   BigInt
+  version     Int         @default(1)
+  uploadedById String
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  series     Series         @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  uploadedBy User           @relation(fields: [uploadedById], references: [id])
+  entityLinks AssetEntityLink[]
+  sceneLinks  AssetSceneLink[]
+  clipLinks   AssetClipLink[]
+  variants    AssetVariant[]
+
+  @@index([seriesId, type])
+}
+
+model AssetVariant {
+  id         String @id @default(cuid())
+  assetId    String
+  label      String
+  storageKey String @unique
+  mimeType   String
+  sizeBytes  BigInt
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([assetId])
+}
+
+model AssetEntityLink {
+  assetId  String
+  entityId String
+  asset    Asset       @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  entity   WorldEntity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  @@id([assetId, entityId])
+}
+
+model AssetSceneLink {
+  assetId String
+  sceneId String
+  asset   Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  scene   Scene @relation(fields: [sceneId], references: [id], onDelete: Cascade)
+
+  @@id([assetId, sceneId])
+}
+
+model AssetClipLink {
+  assetId String
+  clipId  String
+  asset   Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  clip    Clip  @relation(fields: [clipId], references: [id], onDelete: Cascade)
+
+  @@id([assetId, clipId])
+}
+
+enum AssetType {
+  IMAGE
+  VIDEO
+  AUDIO
+  DOCUMENT
+  STORYBOARD
+  OTHER
+}
+
+enum AssetStatus {
+  PENDING
+  UPLOADED
+  REVIEW
+  APPROVED
+  ARCHIVED
+}
+
+// ── LLM Generation ───────────────────────────────────────────────────────────
+
+model LlmProviderConfig {
+  id           String      @id @default(cuid())
+  seriesId     String?
+  provider     LlmProvider
+  displayName  String
+  baseUrl      String?
+  model        String
+  encryptedKey String?
+  isDefault    Boolean     @default(false)
+  isActive     Boolean     @default(true)
+  maxTokens    Int         @default(4096)
+  temperature  Float       @default(0.7)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  series         Series?        @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  generationRuns GenerationRun[]
+
+  @@index([seriesId])
+}
+
+enum LlmProvider {
+  OPENAI
+  OLLAMA
+  LLAMACPP
+}
+
+model GenerationRun {
+  id             String           @id @default(cuid())
+  seriesId       String
+  clipId         String
+  userId         String
+  configId       String
+  status         GenerationStatus @default(PENDING)
+  guideVersion   String
+  inputSnapshot  Json
+  rawResponse    String?
+  imagePrompt    String?
+  videoPrompt    String?
+  voicePrompt    String?
+  audioPrompt    String?
+  negativePrompt String?
+  compiledVideoPrompt String?
+  promptStatus   PromptStatus     @default(DRAFT)
+  inputTokens    Int?
+  outputTokens   Int?
+  durationMs     Int?
+  errorMessage   String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+
+  series Series            @relation(fields: [seriesId], references: [id])
+  clip   Clip              @relation(fields: [clipId], references: [id], onDelete: Cascade)
+  user   User              @relation(fields: [userId], references: [id])
+  config LlmProviderConfig @relation(fields: [configId], references: [id])
+
+  @@index([clipId])
+  @@index([seriesId])
+}
+
+enum GenerationStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum PromptStatus {
+  DRAFT
+  ACCEPTED
+  REJECTED
+}
+
+// ── Audit ─────────────────────────────────────────────────────────────────────
+
+model ActivityEvent {
+  id         String   @id @default(cuid())
+  seriesId   String
+  userId     String
+  action     String
+  entityType String?
+  entityId   String?
+  detail     String?
+  createdAt  DateTime @default(now())
+
+  series Series @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@index([seriesId])
+  @@index([userId])
+}

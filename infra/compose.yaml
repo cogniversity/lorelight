@@ -1,0 +1,34 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-lorelight}
+      POSTGRES_USER: ${POSTGRES_USER:-lorelight}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-lorelightdev}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-lorelight}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: dhi.io/minio@sha256:fd8cf862d06f5acba55305d5d30eb18782f546ae30917f06bc593642738d98a9
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-lorelightminio}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-lorelightminiodev}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+
+volumes:
+  postgres_data:
+  minio_data:

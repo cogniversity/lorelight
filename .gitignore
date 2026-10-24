@@ -1,0 +1,44 @@
+# Dependencies
+node_modules/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Build output
+dist/
+build/
+out/
+*.tsbuildinfo
+
+# Test and coverage output
+coverage/
+test-results/
+playwright-report/
+blob-report/
+
+# Runtime logs
+*.log
+logs/
+
+# Local databases and uploaded files
+*.db
+*.sqlite
+uploads/
+
+# Tool and editor files
+.cache/
+.vite/
+.turbo/
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# Generated secrets and certificates
+*.pem
+*.key
+*.crt
