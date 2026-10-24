@@ -230,6 +230,7 @@ export class ProposalExecutorService {
         title: String(p.title ?? 'Untitled Act'),
         summary: p.summary ? String(p.summary) : null,
         purpose: p.purpose ? String(p.purpose) : null,
+        tags: Array.isArray(p.tags) ? p.tags.map(String) : [],
         position: (maxPos._max.position ?? -1) + 1,
       },
     });
@@ -249,6 +250,7 @@ export class ProposalExecutorService {
         ...(p.title !== undefined && { title: String(p.title) }),
         ...(p.summary !== undefined && { summary: String(p.summary) }),
         ...(p.purpose !== undefined && { purpose: String(p.purpose) }),
+        ...(Array.isArray(p.tags) && { tags: p.tags.map(String) }),
       },
     });
     return { appliedRecordId: r.id, afterSnap: r as unknown as Record<string, unknown> };
@@ -275,6 +277,7 @@ export class ProposalExecutorService {
         purpose: p.purpose ? String(p.purpose) : null,
         timeOfDay: p.timeOfDay ? String(p.timeOfDay) : null,
         interior: p.interior !== false,
+        tags: Array.isArray(p.tags) ? p.tags.map(String) : [],
         position: (maxPos._max.position ?? -1) + 1,
       },
     });
@@ -295,6 +298,7 @@ export class ProposalExecutorService {
         ...(p.summary !== undefined && { summary: String(p.summary) }),
         ...(p.purpose !== undefined && { purpose: String(p.purpose) }),
         ...(p.timeOfDay !== undefined && { timeOfDay: String(p.timeOfDay) }),
+        ...(Array.isArray(p.tags) && { tags: p.tags.map(String) }),
       },
     });
     return { appliedRecordId: r.id, afterSnap: r as unknown as Record<string, unknown> };
@@ -359,6 +363,7 @@ export class ProposalExecutorService {
         dialogue: p.dialogue ? String(p.dialogue) : null,
         targetDurationSec: (p.targetDurationSec as number) ?? 7,
         position: (maxPos._max.position ?? -1) + 1,
+        tags: Array.isArray(p.tags) ? p.tags.map(String) : [],
       },
     });
     return { appliedRecordId: r.id, afterSnap: r as unknown as Record<string, unknown> };
@@ -379,6 +384,7 @@ export class ProposalExecutorService {
         ...(p.action !== undefined && { action: String(p.action) }),
         ...(p.dialogue !== undefined && { dialogue: String(p.dialogue) }),
         ...(p.emotion !== undefined && { emotion: String(p.emotion) }),
+        ...(Array.isArray(p.tags) && { tags: p.tags.map(String) }),
       },
     });
     return { appliedRecordId: r.id, afterSnap: r as unknown as Record<string, unknown> };
@@ -395,6 +401,18 @@ export class ProposalExecutorService {
         externalId: p.externalId ? String(p.externalId) : null,
         subtitle: p.subtitle ? String(p.subtitle) : '',
         description: p.description ? String(p.description) : '',
+        visualDescription: p.visualDescription ? String(p.visualDescription) : null,
+        facialFeatures: p.facialFeatures ? String(p.facialFeatures) : null,
+        visualSilhouetteDress: p.visualSilhouetteDress
+          ? String(p.visualSilhouetteDress)
+          : null,
+        voiceDescription: p.voiceDescription ? String(p.voiceDescription) : null,
+        voiceProfile: p.voiceProfile ? String(p.voiceProfile) : null,
+        costumeDescription: p.costumeDescription
+          ? String(p.costumeDescription)
+          : null,
+        mannerisms: p.mannerisms ? String(p.mannerisms) : null,
+        biography: p.biography ? String(p.biography) : null,
       },
     });
     return { appliedRecordId: r.id, afterSnap: r as unknown as Record<string, unknown> };
@@ -412,6 +430,18 @@ export class ProposalExecutorService {
         ...(p.subtitle !== undefined && { subtitle: String(p.subtitle) }),
         ...(p.description !== undefined && { description: String(p.description) }),
         ...(p.externalId !== undefined && { externalId: String(p.externalId) }),
+        ...(p.visualDescription !== undefined && { visualDescription: String(p.visualDescription) }),
+        ...(p.facialFeatures !== undefined && { facialFeatures: String(p.facialFeatures) }),
+        ...(p.visualSilhouetteDress !== undefined && {
+          visualSilhouetteDress: String(p.visualSilhouetteDress),
+        }),
+        ...(p.voiceDescription !== undefined && { voiceDescription: String(p.voiceDescription) }),
+        ...(p.voiceProfile !== undefined && { voiceProfile: String(p.voiceProfile) }),
+        ...(p.costumeDescription !== undefined && {
+          costumeDescription: String(p.costumeDescription),
+        }),
+        ...(p.mannerisms !== undefined && { mannerisms: String(p.mannerisms) }),
+        ...(p.biography !== undefined && { biography: String(p.biography) }),
       },
     });
     return { appliedRecordId: r.id, afterSnap: r as unknown as Record<string, unknown> };

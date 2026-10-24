@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
   Logger,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -37,6 +38,7 @@ export class ProvidersService {
     const encKey = this.config.get<string>('app.secretEncryptionKey') ?? '';
     let encryptedKey: string | undefined;
     if (dto.apiKey) {
+      this.assertStrongEncryptionKey(encKey);
       encryptedKey = encrypt(dto.apiKey, encKey);
     }
 
@@ -75,6 +77,9 @@ export class ProvidersService {
   ) {
     const existing = await this.findOrFail(seriesId, configId);
     const encKey = this.config.get<string>('app.secretEncryptionKey') ?? '';
+    if (dto.apiKey !== undefined) {
+      this.assertStrongEncryptionKey(encKey);
+    }
 
     if (dto.isDefault) {
       await this.prisma.llmProviderConfig.updateMany({
@@ -136,6 +141,14 @@ export class ProvidersService {
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
+
+  private assertStrongEncryptionKey(value: string) {
+    if (value.length < 32) {
+      throw new BadRequestException(
+        'SECRET_ENCRYPTION_KEY must contain at least 32 characters before provider keys can be stored.',
+      );
+    }
+  }
 
   async findOrFail(seriesId: string, configId: string) {
     const config = await this.prisma.llmProviderConfig.findFirst({

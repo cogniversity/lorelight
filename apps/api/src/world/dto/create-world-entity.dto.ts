@@ -3,11 +3,14 @@ import { WorldEntityStatus, WorldEntityType } from '@prisma/client';
 import {
   IsArray,
   IsEnum,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
   Matches,
+  Max,
   MaxLength,
+  Min,
 } from 'class-validator';
 
 /** externalId: alphanumeric, hyphens, underscores; max 64 chars (any case — normalised to lowercase on save). */
@@ -67,14 +70,26 @@ export class CreateWorldEntityDto {
 
   // ── Character fields ────────────────────────────────────────────────────────
 
+  @ApiPropertyOptional({ default: 20 }) @IsOptional() @IsInt() @Min(0) @Max(200) age?: number;
+  @ApiPropertyOptional() @IsOptional() @IsString() ethnicity?: string;
+  @ApiPropertyOptional({ default: 'Fitzpatrick Type II Pinkish-ivory skin' })
+  @IsOptional()
+  @IsString()
+  skinTone?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() visualDescription?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() facialFeatures?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() visualSilhouetteDress?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() voiceDescription?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() voiceProfile?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() costumeDescription?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() mannerisms?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() goals?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() motivations?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() fears?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() biography?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() profilePhotoAssetId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() voiceSampleAssetId?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() referenceImageAssetId?: string;
 
   // ── Location fields ─────────────────────────────────────────────────────────
 

@@ -116,7 +116,8 @@ function SearchModal({
     const type = r.type?.toLowerCase();
     if (type === "clip") navigate(`/series/${seriesId}/clips/${r.id}`);
     else if (type === "scene") navigate(`/series/${seriesId}/scenes/${r.id}`);
-    else if (type === "episode") navigate(`/series/${seriesId}/episodes`);
+    else if (type === "episode" || type === "act") navigate(`/series/${seriesId}/episodes`);
+    else if (type === "asset") navigate(`/series/${seriesId}/assets`);
     else navigate(`/series/${seriesId}/overview`);
   }
 

@@ -38,3 +38,26 @@ export interface AcceptPromptsDto {
 }
 
 export interface GenerationRunListDto { items: GeneratedPromptsDto[]; total: number; }
+
+export interface AudioProviderConfigDto {
+  id: string;
+  seriesId: string;
+  provider: 'MAGE';
+  displayName: string;
+  model: 'seed-audio-1.0';
+  isActive: boolean;
+  hasApiKey: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateAudioProviderConfigDto {
+  apiKey: string;
+  displayName?: string;
+  isActive?: boolean;
+}
+
+export interface GenerateVoiceSampleDto {
+  voiceProfile?: string;
+  sampleText?: string;
+}

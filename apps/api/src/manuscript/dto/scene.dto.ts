@@ -3,6 +3,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { SceneStatus } from '@prisma/client';
 import {
   IsBoolean,
+  IsArray,
   IsEnum,
   IsInt,
   IsNotEmpty,
@@ -56,6 +57,12 @@ export class CreateSceneDto {
   @IsOptional()
   @IsString()
   duration?: string;
+
+  @ApiPropertyOptional({ type: [String], description: 'Searchable metadata tags' })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tags?: string[];
 
   @ApiPropertyOptional({ minimum: 0 })
   @IsOptional()

@@ -112,6 +112,79 @@ function AddProviderModal({
   );
 }
 
+function AddAudioProviderModal({
+  onClose,
+  onSave,
+}: {
+  onClose: () => void;
+  onSave: (data: { apiKey: string; displayName?: string }) => void;
+}) {
+  const [apiKey, setApiKey] = useState("");
+  const [displayName, setDisplayName] = useState("Mage Seed Audio");
+  return (
+    <div className="modal-backdrop" onMouseDown={onClose}>
+      <form
+        className="modal entity-modal"
+        onMouseDown={(event) => event.stopPropagation()}
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSave({ apiKey, displayName: displayName.trim() || undefined });
+        }}
+      >
+        <div className="modal-head">
+          <div>
+            <span className="eyebrow">VOICE PROFILE GENERATION</span>
+            <h2>Add Mage audio provider</h2>
+          </div>
+          <button type="button" onClick={onClose}>
+            <X size={19} />
+          </button>
+        </div>
+        <div className="provider-notice">
+          <Zap size={16} />
+          <div>
+            <strong>Seed Audio only</strong>
+            <p>
+              This integration is restricted to five-second character voice
+              samples. Each generation currently costs Mage Gems.
+            </p>
+          </div>
+        </div>
+        <label>
+          Display name
+          <input
+            value={displayName}
+            onChange={(event) => setDisplayName(event.target.value)}
+          />
+        </label>
+        <label>
+          Mage API key
+          <input
+            type="password"
+            value={apiKey}
+            onChange={(event) => setApiKey(event.target.value)}
+            placeholder="mage_sk_…"
+            required
+          />
+        </label>
+        <div className="modal-actions">
+          <button type="button" className="outline-button" onClick={onClose}>
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="primary-button"
+            disabled={!apiKey.startsWith("mage_sk_")}
+          >
+            <Check size={15} />
+            Add Mage provider
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 // ─── SettingsPage ──────────────────────────────────────────────────────────────
 export default function SettingsPage() {
   const { seriesId, series } = useSeriesContext();
@@ -119,6 +192,7 @@ export default function SettingsPage() {
   const [name, setName] = useState(series?.name ?? "");
   const [premise, setPremise] = useState(series?.premise ?? "");
   const [showAddProvider, setShowAddProvider] = useState(false);
+  const [showAddAudioProvider, setShowAddAudioProvider] = useState(false);
   const [toast, setToast] = useState("");
   const [testResult, setTestResult] = useState<Record<string, string>>({});
 
@@ -136,6 +210,11 @@ export default function SettingsPage() {
   const { data: providers = [], isLoading: providersLoading } = useQuery({
     queryKey: ["llm-providers", seriesId],
     queryFn: () => settingsApi.listProviders(seriesId),
+    enabled: !!seriesId,
+  });
+  const { data: audioProviders = [], isLoading: audioProvidersLoading } = useQuery({
+    queryKey: ["audio-providers", seriesId],
+    queryFn: () => settingsApi.listAudioProviders(seriesId),
     enabled: !!seriesId,
   });
 
@@ -165,6 +244,24 @@ export default function SettingsPage() {
       notify("Provider removed");
     },
   });
+  const addAudioProviderMutation = useMutation({
+    mutationFn: (data: { apiKey: string; displayName?: string }) =>
+      settingsApi.addMageAudioProvider(seriesId, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["audio-providers", seriesId] });
+      setShowAddAudioProvider(false);
+      notify("Mage audio provider added");
+    },
+    onError: (error: any) =>
+      notify(error?.response?.data?.message ?? "Could not add audio provider"),
+  });
+  const deleteAudioProviderMutation = useMutation({
+    mutationFn: (id: string) => settingsApi.deleteAudioProvider(seriesId, id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["audio-providers", seriesId] });
+      notify("Audio provider removed");
+    },
+  });
 
   const testProvider = async (id: string) => {
     setTestResult((r) => ({ ...r, [id]: "testing" }));
@@ -176,6 +273,15 @@ export default function SettingsPage() {
       }));
     } catch {
       setTestResult((r) => ({ ...r, [id]: "error" }));
+    }
+  };
+  const testAudioProvider = async (id: string) => {
+    setTestResult((result) => ({ ...result, [id]: "testing" }));
+    try {
+      await settingsApi.testAudioProvider(seriesId, id);
+      setTestResult((result) => ({ ...result, [id]: "ok" }));
+    } catch {
+      setTestResult((result) => ({ ...result, [id]: "error" }));
     }
   };
 
@@ -335,6 +441,85 @@ export default function SettingsPage() {
               ))
             )}
           </div>
+
+          <div className="panel settings-form" style={{ marginTop: 13 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: 20,
+              }}
+            >
+              <div>
+                <h2 style={{ margin: 0 }}>Audio provider</h2>
+                <small>Character voice-profile samples only · exactly 5 seconds</small>
+              </div>
+              <button
+                className="outline-button"
+                onClick={() => setShowAddAudioProvider(true)}
+              >
+                <Plus size={14} />
+                Add Mage
+              </button>
+            </div>
+            {audioProvidersLoading ? (
+              <Skeleton height={52} borderRadius={4} />
+            ) : audioProviders.length === 0 ? (
+              <div className="provider-notice">
+                <Zap size={16} />
+                <div>
+                  <strong>No audio provider configured</strong>
+                  <p>Add Mage to generate five-second character voice samples.</p>
+                </div>
+              </div>
+            ) : (
+              audioProviders.map((provider) => (
+                <div key={provider.id} className="provider-row">
+                  <div className="provider-info">
+                    <strong>
+                      {provider.displayName} · {provider.model}
+                    </strong>
+                    <small>Restricted to voice samples · 5 seconds</small>
+                  </div>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    {testResult[provider.id] && (
+                      <span style={{ fontSize: 8, fontFamily: "DM Mono" }}>
+                        {testResult[provider.id] === "ok"
+                          ? "✓ Connected"
+                          : testResult[provider.id] === "testing"
+                            ? "Testing…"
+                            : "✗ Failed"}
+                      </span>
+                    )}
+                    <button
+                      className="outline-button"
+                      style={{ height: 28, fontSize: 8 }}
+                      onClick={() => testAudioProvider(provider.id)}
+                    >
+                      Test
+                    </button>
+                    <button
+                      style={{
+                        background: "none",
+                        border: 0,
+                        color: "#994f45",
+                        cursor: "pointer",
+                        padding: 4,
+                      }}
+                      onClick={() => {
+                        if (confirm(`Remove ${provider.displayName}?`)) {
+                          deleteAudioProviderMutation.mutate(provider.id);
+                        }
+                      }}
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
         </div>
 
         {/* Danger zone */}
@@ -367,6 +552,12 @@ export default function SettingsPage() {
           seriesId={seriesId}
           onClose={() => setShowAddProvider(false)}
           onSave={(provider) => addProviderMutation.mutate(provider)}
+        />
+      )}
+      {showAddAudioProvider && (
+        <AddAudioProviderModal
+          onClose={() => setShowAddAudioProvider(false)}
+          onSave={(data) => addAudioProviderMutation.mutate(data)}
         />
       )}
 

@@ -14,7 +14,7 @@ export interface EpisodeDto {
 
 export interface ActDto {
   id: string; episodeId: string; number: number; title: string;
-  summary?: string; purpose?: string; position: number; sceneCount: number;
+  summary?: string; purpose?: string; tags: string[]; position: number; sceneCount: number;
 }
 
 export interface SceneDto {
@@ -23,7 +23,7 @@ export interface SceneDto {
   locationId?: string; locationName?: string;
   timeOfDay?: string; interior: boolean;
   status: SceneStatus; duration?: string;
-  position: number; clipCount: number;
+  tags: string[]; position: number; clipCount: number;
   characterIds: string[]; characterNames: string[];
   createdAt: string; updatedAt: string;
 }
@@ -44,7 +44,7 @@ export interface ClipDto {
   voiceNotes?: string; ambientAudio?: string; sfx?: string; music?: string;
   imagePrompt?: string; videoPrompt?: string; voicePrompt?: string;
   audioPrompt?: string; negativePrompt?: string;
-  status: ClipStatus; position: number;
+  status: ClipStatus; tags: string[]; position: number;
   characterIds: string[]; locationId?: string;
   assetIds: string[]; hasGeneratedPrompts: boolean;
   createdAt: string; updatedAt: string;
@@ -62,13 +62,13 @@ export interface CreateEpisodeDto {
   status?: EpisodeStatus; estimatedRuntime?: string; position?: number;
 }
 export interface UpdateEpisodeDto extends Partial<Omit<CreateEpisodeDto, 'seasonId'>> { progress?: number; }
-export interface CreateActDto { episodeId: string; number: number; title: string; summary?: string; purpose?: string; position?: number; }
+export interface CreateActDto { episodeId: string; number: number; title: string; summary?: string; purpose?: string; tags?: string[]; position?: number; }
 export interface UpdateActDto extends Partial<Omit<CreateActDto, 'episodeId'>> {}
 export interface CreateSceneDto {
   actId: string; number: number; title: string; summary?: string; purpose?: string;
   locationId?: string; timeOfDay?: string; interior?: boolean;
   status?: SceneStatus; duration?: string; position?: number;
-  characterIds?: string[];
+  characterIds?: string[]; tags?: string[];
 }
 export interface UpdateSceneDto extends Partial<Omit<CreateSceneDto, 'actId'>> {}
 export interface CreateScriptBlockDto { type: ScriptBlockType; content: string; characterId?: string; position?: number; }
@@ -80,7 +80,7 @@ export interface CreateClipDto {
   cameraShot?: string; cameraAngle?: string; cameraMovement?: string;
   composition?: string; lens?: string; lighting?: string;
   voiceNotes?: string; ambientAudio?: string; sfx?: string; music?: string;
-  status?: ClipStatus; position?: number;
+  status?: ClipStatus; position?: number; tags?: string[];
   characterIds?: string[]; locationId?: string;
 }
 export interface UpdateClipDto extends Partial<Omit<CreateClipDto, 'sceneId'>> {

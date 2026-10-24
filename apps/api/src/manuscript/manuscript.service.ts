@@ -47,6 +47,7 @@ export class ManuscriptService {
                         duration: true,
                         targetDurationSec: true,
                         storyBeat: true,
+                        tags: true,
                       },
                     },
                   },
@@ -160,6 +161,7 @@ export class ManuscriptService {
         title: dto.title,
         summary: dto.summary,
         purpose: dto.purpose,
+        tags: dto.tags ?? [],
         position,
       },
     });
@@ -205,6 +207,7 @@ export class ManuscriptService {
         interior: dto.interior ?? true,
         status: dto.status,
         duration: dto.duration,
+        tags: dto.tags ?? [],
         position,
       },
     });
@@ -327,6 +330,7 @@ export class ManuscriptService {
         status: dto.status,
         position,
         locationId: dto.locationId,
+        tags: dto.tags ?? [],
       },
     });
   }

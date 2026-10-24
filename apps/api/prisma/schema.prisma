@@ -61,11 +61,33 @@ model Series {
   seasons          Season[]
   assets           Asset[]
   providerConfig   LlmProviderConfig[]
+  audioProviders   AudioProviderConfig[]
   generationRuns   GenerationRun[]
   activityEvents   ActivityEvent[]
   sourceManuscript SourceManuscript?
   chatThreads      ChatThread[]
   changeProposals  ChangeProposal[]
+  assetAssignments AssetAssignment[]
+}
+
+model AudioProviderConfig {
+  id           String        @id @default(cuid())
+  seriesId     String
+  provider     AudioProvider @default(MAGE)
+  displayName  String        @default("Mage Seed Audio")
+  model        String        @default("seed-audio-1.0")
+  encryptedKey String
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  series Series @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+
+  @@index([seriesId, isActive])
+}
+
+enum AudioProvider {
+  MAGE
 }
 
 model SeriesMembership {
@@ -132,14 +154,23 @@ model WorldEntity {
   tags        String[]
 
   // Character-specific
-  visualDescription String?
-  voiceDescription  String?
-  costumeDescription String?
-  mannerisms        String?
-  goals             String?
-  motivations       String?
-  fears             String?
-  biography         String?
+  age                   Int?
+  ethnicity             String?
+  skinTone              String?
+  visualDescription     String?
+  facialFeatures        String?
+  visualSilhouetteDress String?
+  voiceDescription      String?
+  voiceProfile          String?
+  costumeDescription    String?
+  mannerisms            String?
+  goals                 String?
+  motivations           String?
+  fears                 String?
+  biography             String?
+  profilePhotoAssetId   String?
+  voiceSampleAssetId    String?
+  referenceImageAssetId String?
 
   // Location-specific
   architectureNotes String?
@@ -168,10 +199,72 @@ model WorldEntity {
   sceneEntities SceneEntity[]
   clipEntities  ClipEntity[]
   assetLinks    AssetEntityLink[]
+  versions      WorldEntityVersion[]
+  profilePhoto  Asset?          @relation("CharacterProfilePhoto", fields: [profilePhotoAssetId], references: [id], onDelete: SetNull)
+  voiceSample   Asset?          @relation("CharacterVoiceSample", fields: [voiceSampleAssetId], references: [id], onDelete: SetNull)
+  referenceImage Asset?         @relation("WorldEntityReferenceImage", fields: [referenceImageAssetId], references: [id], onDelete: SetNull)
 
   @@unique([seriesId, externalId])
   @@index([seriesId, type])
   @@index([seriesId, displayName])
+  @@index([profilePhotoAssetId])
+  @@index([voiceSampleAssetId])
+  @@index([referenceImageAssetId])
+}
+
+model WorldEntityVersion {
+  id                    String   @id @default(cuid())
+  entityId              String
+  name                  String
+  externalId            String?
+  description           String?
+  // Character-specific
+  age                   Int?
+  ethnicity             String?
+  skinTone              String?
+  facialFeatures        String?
+  visualSilhouetteDress String?
+  visualDescription     String?
+  voiceProfile          String?
+  voiceDescription      String?
+  costumeDescription    String?
+  mannerisms            String?
+  // Location-specific
+  architectureNotes     String?
+  moodNotes             String?
+  lightingNotes         String?
+  environmentNotes      String?
+  weatherNotes          String?
+  // Artifact-specific
+  origin                String?
+  currentOwner          String?
+  importance            String?
+  // Shared
+  imageAssetId          String?
+  inheritMainImage      Boolean  @default(true)
+  generatedPrompt       String?
+  startType             StoryAnchorType @default(SERIES)
+  startId               String?
+  endType               StoryAnchorType?
+  endId                 String?
+  position              Int      @default(0)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  entity WorldEntity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  image  Asset?      @relation("EntityVersionImage", fields: [imageAssetId], references: [id], onDelete: SetNull)
+
+  @@index([entityId, position])
+  @@index([imageAssetId])
+  @@index([externalId])
+}
+
+enum StoryAnchorType {
+  SERIES
+  SEASON
+  EPISODE
+  ACT
+  SCENE
 }
 
 enum WorldEntityType {
@@ -251,12 +344,14 @@ model Act {
   title     String
   summary   String?
   purpose   String?
+  tags      String[]
   position  Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   episode Episode @relation(fields: [episodeId], references: [id], onDelete: Cascade)
   scenes  Scene[]
+  assetLinks AssetActLink[]
 
   @@unique([episodeId, number])
   @@index([episodeId])
@@ -275,6 +370,7 @@ model Scene {
   interior   Boolean     @default(true)
   status     SceneStatus @default(DRAFT)
   duration   String?
+  tags       String[]
   position   Int         @default(0)
   createdAt  DateTime    @default(now())
   updatedAt  DateTime    @updatedAt
@@ -351,6 +447,7 @@ model Clip {
   status          ClipStatus @default(PLANNED)
   position        Int        @default(0)
   locationId      String?
+  tags            String[]
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
@@ -394,30 +491,63 @@ model ClipEntity {
 // ── Assets ───────────────────────────────────────────────────────────────────
 
 model Asset {
-  id          String      @id @default(cuid())
-  seriesId    String
-  type        AssetType
-  status      AssetStatus @default(PENDING)
-  title       String
-  description String?
-  tags        String[]
-  filename    String
-  storageKey  String      @unique
-  mimeType    String
-  sizeBytes   BigInt
-  version     Int         @default(1)
-  uploadedById String
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id                    String      @id @default(cuid())
+  seriesId              String
+  type                  AssetType
+  status                AssetStatus @default(PENDING)
+  title                 String
+  description           String?
+  tags                  String[]
+  filename              String
+  storageKey            String      @unique
+  mimeType              String
+  sizeBytes             BigInt
+  version               Int         @default(1)
+  versionNotes          String?
+  isFinal               Boolean     @default(false)
+  uploadedById          String
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
 
   series     Series         @relation(fields: [seriesId], references: [id], onDelete: Cascade)
   uploadedBy User           @relation(fields: [uploadedById], references: [id])
   entityLinks AssetEntityLink[]
+  actLinks    AssetActLink[]
   sceneLinks  AssetSceneLink[]
   clipLinks   AssetClipLink[]
   variants    AssetVariant[]
+  profilePhotoFor WorldEntity[]      @relation("CharacterProfilePhoto")
+  voiceSampleFor  WorldEntity[]      @relation("CharacterVoiceSample")
+  referenceImageFor WorldEntity[]    @relation("WorldEntityReferenceImage")
+  entityVersionImages WorldEntityVersion[] @relation("EntityVersionImage")
+  assignments AssetAssignment[]      @relation("AssignmentAsset")
+  replacedByInAssignments AssetAssignment[] @relation("AssignmentReplacedBy")
+  provenance AssetProvenance?
 
   @@index([seriesId, type])
+}
+
+enum AssetProvenanceSource {
+  UPLOAD
+  MAGE_SEED_AUDIO
+}
+
+model AssetProvenance {
+  id              String                @id @default(cuid())
+  assetId         String                @unique
+  source          AssetProvenanceSource
+  provider        String?
+  model           String?
+  requestId       String?
+  prompt          String?
+  durationSeconds Int?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@index([source])
+  @@index([provider, model])
 }
 
 model AssetVariant {
@@ -451,6 +581,15 @@ model AssetSceneLink {
   @@id([assetId, sceneId])
 }
 
+model AssetActLink {
+  assetId String
+  actId   String
+  asset   Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  act     Act   @relation(fields: [actId], references: [id], onDelete: Cascade)
+
+  @@id([assetId, actId])
+}
+
 model AssetClipLink {
   assetId String
   clipId  String
@@ -467,6 +606,49 @@ enum AssetType {
   DOCUMENT
   STORYBOARD
   OTHER
+}
+
+enum AssetAssignmentRole {
+  PROFILE_PHOTO
+  VOICE_SAMPLE
+  REFERENCE_IMAGE
+  VERSION_IMAGE
+  PRODUCTION_MEDIA
+}
+
+enum AssetAssignmentStatus {
+  ASSIGNED
+  ABANDONED
+}
+
+enum AssetAssignmentTargetType {
+  ENTITY
+  ENTITY_VERSION
+  ACT
+  SCENE
+  CLIP
+}
+
+model AssetAssignment {
+  id                String                    @id @default(cuid())
+  assetId           String
+  seriesId          String
+  targetType        AssetAssignmentTargetType
+  targetId          String
+  role              AssetAssignmentRole
+  status            AssetAssignmentStatus     @default(ASSIGNED)
+  replacementNote   String?
+  replacedByAssetId String?
+  createdAt         DateTime                  @default(now())
+  updatedAt         DateTime                  @updatedAt
+
+  asset      Asset  @relation("AssignmentAsset", fields: [assetId], references: [id], onDelete: Cascade)
+  replacedBy Asset? @relation("AssignmentReplacedBy", fields: [replacedByAssetId], references: [id])
+  series     Series @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+
+  @@index([assetId])
+  @@index([seriesId, targetType, targetId])
+  @@index([status])
 }
 
 enum AssetStatus {

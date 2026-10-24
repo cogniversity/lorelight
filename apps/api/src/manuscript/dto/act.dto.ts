@@ -1,6 +1,6 @@
 import { PartialType } from '@nestjs/swagger';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator';
+import { IsArray, IsInt, IsNotEmpty, IsOptional, IsString, Min } from 'class-validator';
 
 export class CreateActDto {
   @ApiProperty({ description: 'Act number (unique per episode)', minimum: 1 })
@@ -22,6 +22,12 @@ export class CreateActDto {
   @IsOptional()
   @IsString()
   purpose?: string;
+
+  @ApiPropertyOptional({ type: [String], description: 'Searchable metadata tags' })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tags?: string[];
 
   @ApiPropertyOptional({ minimum: 0 })
   @IsOptional()

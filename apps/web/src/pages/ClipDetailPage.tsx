@@ -15,6 +15,7 @@ import { clipsApi, settingsApi, Clip, GenerationRun } from "../api/client";
 import { useSeriesContext } from "../layouts/SeriesLayout";
 import { StatusPill } from "../components/StatusPill";
 import { Skeleton } from "../components/Skeleton";
+import ItemMediaPanel from "../components/ItemMediaPanel";
 
 // ─── Prompt field ──────────────────────────────────────────────────────────────
 function PromptField({
@@ -228,6 +229,15 @@ export default function ClipDetailPage() {
               </div>
               <StatusPill status={clip.status} />
             </div>
+
+            <ItemMediaPanel
+              seriesId={seriesId}
+              targetKind="clip"
+              targetId={clip.id}
+              title={clip.title}
+              currentTags={clip.tags}
+              initiallyOpen
+            />
 
             {/* Clip fields */}
             <section className="panel settings-form" style={{ marginBottom: 16 }}>

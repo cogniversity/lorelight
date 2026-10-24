@@ -22,6 +22,12 @@ import { CreateLlmProviderDto } from './dto/create-provider.dto';
 import { UpdateLlmProviderDto } from './dto/update-provider.dto';
 import { GeneratePromptsDto } from './dto/generate-prompts.dto';
 import { AcceptPromptsDto } from './dto/accept-prompts.dto';
+import { AudioProvidersService } from './audio-providers.service';
+import { VoiceSampleService } from './voice-sample.service';
+import {
+  CreateAudioProviderDto,
+  GenerateVoiceSampleDto,
+} from './dto/audio-provider.dto';
 
 @ApiTags('Generation')
 @ApiBearerAuth()
@@ -31,7 +37,64 @@ export class GenerationController {
   constructor(
     private readonly providersService: ProvidersService,
     private readonly generationService: GenerationService,
+    private readonly audioProvidersService: AudioProvidersService,
+    private readonly voiceSampleService: VoiceSampleService,
   ) {}
+
+  @Get('audio-providers')
+  @Roles(SeriesRole.ADMIN)
+  @ApiOperation({ summary: 'List series audio providers (ADMIN+)' })
+  listAudioProviders(@Param('seriesId') seriesId: string) {
+    return this.audioProvidersService.list(seriesId);
+  }
+
+  @Post('audio-providers')
+  @Roles(SeriesRole.ADMIN)
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Configure Mage Seed Audio for voice samples only (ADMIN+)',
+  })
+  createAudioProvider(
+    @Param('seriesId') seriesId: string,
+    @Body() dto: CreateAudioProviderDto,
+  ) {
+    return this.audioProvidersService.create(seriesId, dto);
+  }
+
+  @Post('audio-providers/:configId/test')
+  @Roles(SeriesRole.ADMIN)
+  @ApiOperation({ summary: 'Test a Mage audio provider (ADMIN+)' })
+  testAudioProvider(
+    @Param('seriesId') seriesId: string,
+    @Param('configId') configId: string,
+  ) {
+    return this.audioProvidersService.test(seriesId, configId);
+  }
+
+  @Delete('audio-providers/:configId')
+  @Roles(SeriesRole.ADMIN)
+  @ApiOperation({ summary: 'Delete an audio provider (ADMIN+)' })
+  deleteAudioProvider(
+    @Param('seriesId') seriesId: string,
+    @Param('configId') configId: string,
+  ) {
+    return this.audioProvidersService.remove(seriesId, configId);
+  }
+
+  @Post('world/:entityId/generate-voice-sample')
+  @Roles(SeriesRole.WRITER)
+  @ApiOperation({
+    summary:
+      'Generate and store a five-second Mage voice-profile sample (WRITER+)',
+  })
+  generateVoiceSample(
+    @Param('seriesId') seriesId: string,
+    @Param('entityId') entityId: string,
+    @CurrentUser('id') userId: string,
+    @Body() dto: GenerateVoiceSampleDto,
+  ) {
+    return this.voiceSampleService.generate(seriesId, entityId, userId, dto);
+  }
 
   // ── LLM Provider CRUD (ADMIN+) ───────────────────────────────────────────
 
