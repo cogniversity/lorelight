@@ -7,6 +7,6 @@ import { LlmFactoryService } from './adapters/llm-factory.service';
 @Module({
   controllers: [GenerationController],
   providers: [GenerationService, ProvidersService, LlmFactoryService],
-  exports: [GenerationService, ProvidersService],
+  exports: [GenerationService, ProvidersService, LlmFactoryService],
 })
 export class GenerationModule {}

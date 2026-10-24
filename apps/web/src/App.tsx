@@ -17,6 +17,7 @@ import SceneDetailPage from "./pages/SceneDetailPage";
 import AssetsPage from "./pages/AssetsPage";
 import SettingsPage from "./pages/SettingsPage";
 import MembersPage from "./pages/MembersPage";
+import DraftManuscriptPage from "./pages/DraftManuscriptPage";
 import SeriesLayout from "./layouts/SeriesLayout";
 
 function RequireAuth({ children }: { children: ReactNode }) {
@@ -60,6 +61,7 @@ export default function App() {
         <Route path="organizations" element={<WorldPage entityType="ORGANIZATION" />} />
         <Route path="timeline" element={<WorldPage entityType="TIMELINE_EVENT" />} />
         <Route path="episodes" element={<EpisodesPage />} />
+        <Route path="draft" element={<DraftManuscriptPage />} />
         <Route path="reader" element={<ManuscriptReaderPage />} />
         <Route path="reader/:episodeId" element={<EpisodeReaderPage />} />
         <Route path="reader/:episodeId/scenes/:sceneId" element={<SceneReaderPage />} />

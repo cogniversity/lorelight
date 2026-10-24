@@ -39,9 +39,11 @@ import {
   UsersRound,
   X,
   CircleUserRound,
+  PenLine,
 } from "lucide-react";
 import { seriesApi, searchApi, Series, SearchResult } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
+import AssistantPanel from "../components/AssistantPanel";
 
 // ─── Series context ────────────────────────────────────────────────────────────
 interface SeriesContextValue {
@@ -71,6 +73,7 @@ const NAV = [
     section: "Production",
     items: [
       { label: "Episodes", path: "episodes", icon: GalleryVerticalEnd },
+      { label: "Draft", path: "draft", icon: PenLine },
       { label: "Reader", path: "reader", icon: FileText },
       { label: "Assets", path: "assets", icon: FolderOpen },
     ],
@@ -399,6 +402,7 @@ function usePageName(): string {
     organizations: "Organizations",
     timeline: "Timeline",
     episodes: "Episodes",
+    draft: "Draft Manuscript",
     reader: "Manuscript Reader",
     clips: "Clip Detail",
     scenes: "Scene Detail",
@@ -485,6 +489,14 @@ export default function SeriesLayout() {
               </div>
             </aside>
           </div>
+        )}
+
+        {/* Floating AI assistant — always available within the series workspace */}
+        {seriesId && (
+          <AssistantPanel
+            seriesId={seriesId}
+            seriesName={series?.name ?? ""}
+          />
         )}
       </div>
     </SeriesContext.Provider>

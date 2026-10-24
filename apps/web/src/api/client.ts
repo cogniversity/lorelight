@@ -604,4 +604,135 @@ export const settingsApi = {
     api.delete(`/api/series/${seriesId}/providers/${providerId}`),
 };
 
+// ─── Draft Manuscript ─────────────────────────────────────────────────────────
+
+export interface DraftManuscript {
+  id: string;
+  seriesId: string;
+  content: string;
+  revisionNum: number;
+  updatedAt: string;
+}
+
+export interface ManuscriptRevision {
+  id: string;
+  manuscriptId: string;
+  revisionNum: number;
+  contentPreview?: string;
+  content?: string;
+  authorId: string;
+  authorName?: string;
+  createdAt: string;
+}
+
+export const draftApi = {
+  get: (seriesId: string) =>
+    api.get<DraftManuscript>(`/api/series/${seriesId}/draft-manuscript`).then((r) => r.data),
+  save: (seriesId: string, content: string, expectedRevision: number) =>
+    api
+      .put<DraftManuscript>(`/api/series/${seriesId}/draft-manuscript`, {
+        content,
+        expectedRevision,
+      })
+      .then((r) => r.data),
+  revisions: (seriesId: string) =>
+    api
+      .get<{ items: ManuscriptRevision[] }>(`/api/series/${seriesId}/draft-manuscript/revisions`)
+      .then((r) => r.data.items),
+  restore: (seriesId: string, revisionId: string) =>
+    api
+      .post<DraftManuscript>(`/api/series/${seriesId}/draft-manuscript/revisions/restore`, {
+        revisionId,
+      })
+      .then((r) => r.data),
+};
+
+// ─── Assistant / Chat ──────────────────────────────────────────────────────────
+
+export type ProposalStatus = "PENDING" | "APPROVED" | "APPLIED" | "REJECTED" | "STALE" | "FAILED";
+
+export interface ChatThread {
+  id: string;
+  seriesId: string;
+  userId: string;
+  title: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChangeProposal {
+  id: string;
+  seriesId: string;
+  threadId: string;
+  messageId: string;
+  status: ProposalStatus;
+  commandType: string;
+  entityType: string;
+  targetPath: Record<string, string | null>;
+  payload: Record<string, unknown>;
+  beforeSnap?: Record<string, unknown> | null;
+  afterSnap?: Record<string, unknown> | null;
+  validationErrors?: string | null;
+  appliedRecordId?: string | null;
+  humanReadable: string;
+  createdAt: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  threadId: string;
+  seriesId: string;
+  role: "USER" | "ASSISTANT" | "SYSTEM";
+  content: string;
+  proposals?: ChangeProposal[];
+  createdAt: string;
+}
+
+export interface RouteContext {
+  page?: string;
+  episodeId?: string;
+  seasonId?: string;
+  actId?: string;
+  sceneId?: string;
+  clipId?: string;
+}
+
+export const assistantApi = {
+  getOrCreateThread: (seriesId: string) =>
+    api.get<ChatThread>(`/api/series/${seriesId}/assistant/thread`).then((r) => r.data),
+  newThread: (seriesId: string) =>
+    api.post<ChatThread>(`/api/series/${seriesId}/assistant/thread/new`).then((r) => r.data),
+  listThreads: (seriesId: string) =>
+    api.get<ChatThread[]>(`/api/series/${seriesId}/assistant/threads`).then((r) => r.data),
+  getMessages: (seriesId: string, threadId: string) =>
+    api
+      .get<ChatMessage[]>(`/api/series/${seriesId}/assistant/threads/${threadId}/messages`)
+      .then((r) => r.data),
+  sendMessage: (
+    seriesId: string,
+    threadId: string,
+    content: string,
+    routeContext?: RouteContext,
+  ) =>
+    api
+      .post<{ message: ChatMessage; proposals: ChangeProposal[] }>(
+        `/api/series/${seriesId}/assistant/threads/${threadId}/messages`,
+        { content, routeContext },
+      )
+      .then((r) => r.data),
+  approveProposal: (seriesId: string, proposalId: string) =>
+    api
+      .post<{ proposal: ChangeProposal; appliedRecordId?: string }>(
+        `/api/series/${seriesId}/assistant/proposals/${proposalId}/approve`,
+      )
+      .then((r) => r.data),
+  rejectProposal: (seriesId: string, proposalId: string) =>
+    api
+      .post<{ proposal: ChangeProposal }>(
+        `/api/series/${seriesId}/assistant/proposals/${proposalId}/reject`,
+      )
+      .then((r) => r.data),
+};
+
 export default api;

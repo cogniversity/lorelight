@@ -35,6 +35,18 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api/docs', app, document);
 
+  // ── Startup safety checks ──────────────────────────────────────────────────
+  const encKey = process.env.SECRET_ENCRYPTION_KEY ?? '';
+  if (encKey.length < 32) {
+    console.warn(
+      '[SECURITY] SECRET_ENCRYPTION_KEY is missing or shorter than 32 characters. ' +
+      'Encrypted provider API keys will use a weak key. Set a strong key in .env before storing secrets.',
+    );
+  }
+  if (!process.env.JWT_ACCESS_SECRET || process.env.JWT_ACCESS_SECRET.length < 32) {
+    console.warn('[SECURITY] JWT_ACCESS_SECRET is missing or weak.');
+  }
+
   const port = process.env.PORT ?? 3001;
   await app.listen(port);
   console.log(`Lorelight API running on http://localhost:${port}`);

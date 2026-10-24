@@ -123,9 +123,10 @@ Use vivid, cinematic language. Be specific about camera work, lighting, mood, an
         });
 
     if (!providerConfig) {
+      // Restrict fallback to this series or explicitly global (seriesId: null) configs only.
       providerConfig = await this.prisma.llmProviderConfig.findFirst({
-        where: { isActive: true },
-        orderBy: { createdAt: 'asc' },
+        where: { isActive: true, OR: [{ seriesId }, { seriesId: null }] },
+        orderBy: [{ seriesId: 'desc' }, { createdAt: 'asc' }],
       });
     }
 

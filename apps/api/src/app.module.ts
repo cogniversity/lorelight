@@ -13,6 +13,8 @@ import { GenerationModule } from './generation/generation.module';
 import { SearchModule } from './search/search.module';
 import { ImportModule } from './import/import.module';
 import { ActivityModule } from './activity/activity.module';
+import { DraftManuscriptModule } from './draft-manuscript/draft-manuscript.module';
+import { AssistantModule } from './assistant/assistant.module';
 import appConfig from './config/app.config';
 
 @Module({
@@ -38,6 +40,8 @@ import appConfig from './config/app.config';
     SearchModule,
     ImportModule,
     ActivityModule,
+    DraftManuscriptModule,
+    AssistantModule,
   ],
 })
 export class AppModule {}

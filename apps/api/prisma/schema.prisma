@@ -20,11 +20,14 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  refreshTokens  RefreshToken[]
-  memberships    SeriesMembership[]
-  uploadedAssets Asset[]
-  generationRuns GenerationRun[]
-  activityEvents ActivityEvent[]
+  refreshTokens       RefreshToken[]
+  memberships         SeriesMembership[]
+  uploadedAssets      Asset[]
+  generationRuns      GenerationRun[]
+  activityEvents      ActivityEvent[]
+  manuscriptRevisions ManuscriptRevision[]
+  chatThreads         ChatThread[]
+  changeProposals     ChangeProposal[]
 }
 
 model RefreshToken {
@@ -52,14 +55,17 @@ model Series {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  memberships    SeriesMembership[]
-  bibleEntries   BibleEntry[]
-  worldEntities  WorldEntity[]
-  seasons        Season[]
-  assets         Asset[]
-  providerConfig LlmProviderConfig[]
-  generationRuns GenerationRun[]
-  activityEvents ActivityEvent[]
+  memberships      SeriesMembership[]
+  bibleEntries     BibleEntry[]
+  worldEntities    WorldEntity[]
+  seasons          Season[]
+  assets           Asset[]
+  providerConfig   LlmProviderConfig[]
+  generationRuns   GenerationRun[]
+  activityEvents   ActivityEvent[]
+  sourceManuscript SourceManuscript?
+  chatThreads      ChatThread[]
+  changeProposals  ChangeProposal[]
 }
 
 model SeriesMembership {
@@ -545,6 +551,114 @@ enum PromptStatus {
   DRAFT
   ACCEPTED
   REJECTED
+}
+
+// ── Source Manuscript (full-draft Markdown) ──────────────────────────────────
+
+model SourceManuscript {
+  id          String   @id @default(cuid())
+  seriesId    String   @unique
+  content     String   @default("")
+  revisionNum Int      @default(1)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  series    Series               @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  revisions ManuscriptRevision[]
+}
+
+model ManuscriptRevision {
+  id           String   @id @default(cuid())
+  manuscriptId String
+  revisionNum  Int
+  content      String
+  authorId     String
+  createdAt    DateTime @default(now())
+
+  manuscript SourceManuscript @relation(fields: [manuscriptId], references: [id], onDelete: Cascade)
+  author     User             @relation(fields: [authorId], references: [id])
+
+  @@unique([manuscriptId, revisionNum])
+  @@index([manuscriptId])
+}
+
+// ── AI Assistant ─────────────────────────────────────────────────────────────
+
+model ChatThread {
+  id        String   @id @default(cuid())
+  seriesId  String
+  userId    String
+  title     String   @default("")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  series    Series          @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  user      User            @relation(fields: [userId], references: [id])
+  messages  ChatMessage[]
+  proposals ChangeProposal[]
+
+  @@index([seriesId, userId])
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  threadId  String
+  seriesId  String
+  role      ChatRole
+  content   String
+  createdAt DateTime @default(now())
+
+  thread    ChatThread      @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  proposals ChangeProposal[]
+
+  @@index([threadId])
+}
+
+enum ChatRole {
+  USER
+  ASSISTANT
+  SYSTEM
+}
+
+model ChangeProposal {
+  id             String         @id @default(cuid())
+  seriesId       String
+  threadId       String
+  messageId      String
+  actorId        String
+  idempotencyKey String         @unique @default(cuid())
+  status         ProposalStatus @default(PENDING)
+  commandType    String
+  entityType     String
+  targetPath     Json
+  payload        Json
+  beforeSnap     Json?
+  afterSnap      Json?
+  validationErrors String?
+  appliedRecordId  String?
+  providerConfigId String?
+  promptSnapshot   String?
+  humanReadable    String        @default("")
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  series  Series      @relation(fields: [seriesId], references: [id], onDelete: Cascade)
+  thread  ChatThread  @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  message ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  actor   User        @relation(fields: [actorId], references: [id])
+
+  @@index([seriesId])
+  @@index([threadId])
+}
+
+enum ProposalStatus {
+  PENDING
+  APPROVED
+  APPLIED
+  REJECTED
+  STALE
+  FAILED
 }
 
 // ── Audit ─────────────────────────────────────────────────────────────────────
