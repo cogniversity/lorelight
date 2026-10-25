@@ -8,6 +8,7 @@ type SearchResultKind =
   | 'ORGANIZATION'
   | 'TIMELINE_EVENT'
   | 'EPISODE'
+  | 'ACT'
   | 'SCENE'
   | 'CLIP'
   | 'BIBLE_ENTRY'
@@ -45,7 +46,7 @@ export class SearchService {
     const results: SearchResultDto[] = [];
 
     // Prisma parallel search across all entity types
-    const [entities, episodes, scenes, clips, bibleEntries, assets] =
+    const [entities, episodes, acts, scenes, clips, bibleEntries, assets] =
       await Promise.all([
         // WorldEntity
         this.prisma.worldEntity.findMany({
@@ -55,6 +56,7 @@ export class SearchService {
               { displayName: contains },
               { subtitle: contains },
               { description: contains },
+              { tags: { has: q.toLowerCase() } },
             ],
           },
           take: limit,
@@ -83,11 +85,35 @@ export class SearchService {
           },
         }),
 
+        // Act (via episode → season → series)
+        this.prisma.act.findMany({
+          where: {
+            episode: { season: { seriesId } },
+            OR: [
+              { title: contains },
+              { summary: contains },
+              { tags: { has: q.toLowerCase() } },
+            ],
+          },
+          take: limit,
+          select: {
+            id: true,
+            title: true,
+            summary: true,
+            number: true,
+            episode: { select: { title: true } },
+          },
+        }),
+
         // Scene (via episode → season → series)
         this.prisma.scene.findMany({
           where: {
             episode: { season: { seriesId } },
-            OR: [{ title: contains }, { summary: contains }],
+            OR: [
+              { title: contains },
+              { summary: contains },
+              { tags: { has: q.toLowerCase() } },
+            ],
           },
           take: limit,
           select: {
@@ -103,7 +129,11 @@ export class SearchService {
         this.prisma.clip.findMany({
           where: {
             scene: { episode: { season: { seriesId } } },
-            OR: [{ title: contains }, { storyBeat: contains }],
+            OR: [
+              { title: contains },
+              { storyBeat: contains },
+              { tags: { has: q.toLowerCase() } },
+            ],
           },
           take: limit,
           select: {
@@ -129,7 +159,12 @@ export class SearchService {
         this.prisma.asset.findMany({
           where: {
             seriesId,
-            title: contains,
+            OR: [
+              { title: contains },
+              { description: contains },
+              { filename: contains },
+              { tags: { has: q.toLowerCase() } },
+            ],
           },
           take: limit,
           select: { id: true, title: true, type: true, filename: true },
@@ -155,6 +190,17 @@ export class SearchService {
         title: ep.title,
         subtitle: `Season ${ep.season.number}, Episode ${ep.number}`,
         highlight: excerpt(ep.synopsis, q),
+      });
+    }
+
+    // Map Scenes
+    for (const act of acts) {
+      results.push({
+        id: act.id,
+        kind: 'ACT',
+        title: act.title,
+        subtitle: `Act ${act.number} — ${act.episode.title}`,
+        highlight: excerpt(act.summary, q),
       });
     }
 

@@ -42,8 +42,39 @@ export interface WorldEntity {
   status: string;
   tags?: string[];
   color?: string;
+  age?: number;
+  ethnicity?: string;
+  skinTone?: string;
+  visualDescription?: string;
+  facialFeatures?: string;
+  visualSilhouetteDress?: string;
+  voiceDescription?: string;
+  voiceProfile?: string;
+  costumeDescription?: string;
+  mannerisms?: string;
+  goals?: string;
+  motivations?: string;
+  fears?: string;
+  biography?: string;
+  profilePhotoAssetId?: string;
+  voiceSampleAssetId?: string;
+  referenceImageAssetId?: string;
+  imagePrompt?: string;
+  architectureNotes?: string;
+  moodNotes?: string;
+  lightingNotes?: string;
+  environmentNotes?: string;
+  weatherNotes?: string;
+  origin?: string;
+  currentOwner?: string;
+  importance?: string;
   createdAt: string;
 }
+
+export type StoryAnchorType = "SERIES" | "SEASON" | "EPISODE" | "ACT" | "SCENE";
+
+// Kept for backward compatibility — use WorldEntityVersion for new code
+export type CharacterVersion = WorldEntityVersion;
 
 export interface ScriptBlock {
   id?: string;
@@ -89,6 +120,7 @@ export interface Clip {
   compiledImagePrompt?: string;
   compiledVideoPrompt?: string;
   status: string;
+  tags?: string[];
   position?: number;
   hasGeneratedPrompts?: boolean;
   createdAt?: string;
@@ -104,6 +136,7 @@ export interface Scene {
   timeOfDay?: string;
   scriptBlocks?: ScriptBlock[];
   clips?: Clip[];
+  tags?: string[];
 }
 
 export interface Act {
@@ -111,6 +144,7 @@ export interface Act {
   actNumber: number;
   title: string;
   scenes: Scene[];
+  tags?: string[];
 }
 
 export interface Episode {
@@ -190,9 +224,11 @@ const normalizeSeason = (season: Record<string, unknown>): Season => ({
 
 export interface Asset {
   id: string;
+  seriesId?: string;
   title: string;
   type?: string;
-  assetType: string;
+  assetType?: string;
+  filename?: string;
   mimeType?: string;
   status: string;
   url?: string;
@@ -201,7 +237,100 @@ export interface Asset {
   fileSize?: number;
   sizeBytes?: number;
   version?: number;
+  versionNotes?: string;
+  isFinal?: boolean;
+  tags?: string[];
+  entityIds?: string[];
+  actIds?: string[];
+  sceneIds?: string[];
+  clipIds?: string[];
+  // Provenance
+  source?: "UPLOAD" | "MAGE_SEED_AUDIO";
+  generationPrompt?: string;
+  generationProvider?: string;
+  generationModel?: string;
+  generationRequestId?: string;
+  generationDurationSec?: number;
+  uploadedByName?: string;
+  assignments?: AssetAssignment[];
   createdAt: string;
+  updatedAt?: string;
+}
+
+export type AssetAssignmentRole =
+  | "PROFILE_PHOTO"
+  | "VOICE_SAMPLE"
+  | "REFERENCE_IMAGE"
+  | "VERSION_IMAGE"
+  | "PRODUCTION_MEDIA";
+
+export type AssetAssignmentStatus = "ASSIGNED" | "ABANDONED";
+
+export interface AssetAssignment {
+  id: string;
+  role: AssetAssignmentRole;
+  status: AssetAssignmentStatus;
+  targetType: string;
+  targetId: string;
+  note?: string;
+  replacedByAssetId?: string;
+  createdAt: string;
+  updatedAt: string;
+  asset?: {
+    id: string;
+    title: string;
+    type: string;
+    filename: string;
+    mimeType: string;
+    source: string;
+    generationProvider?: string;
+    generationModel?: string;
+    generationRequestId?: string;
+    createdAt: string;
+  };
+}
+
+// WorldEntityVersion replaces CharacterVersion
+export interface WorldEntityVersion {
+  id: string;
+  entityId: string;
+  name: string;
+  externalId?: string;
+  effectiveExternalId: string;
+  description?: string;
+  // Character-specific
+  age?: number;
+  ethnicity?: string;
+  skinTone?: string;
+  facialFeatures?: string;
+  visualSilhouetteDress?: string;
+  visualDescription?: string;
+  voiceProfile?: string;
+  voiceDescription?: string;
+  costumeDescription?: string;
+  mannerisms?: string;
+  // Location-specific
+  architectureNotes?: string;
+  moodNotes?: string;
+  lightingNotes?: string;
+  environmentNotes?: string;
+  weatherNotes?: string;
+  // Artifact-specific
+  origin?: string;
+  currentOwner?: string;
+  importance?: string;
+  // Shared
+  imageAssetId?: string;
+  inheritMainImage: boolean;
+  effectiveImageAssetId?: string;
+  generatedPrompt?: string;
+  startType: StoryAnchorType;
+  startId?: string;
+  endType?: StoryAnchorType;
+  endId?: string;
+  position: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ActivityItem {
@@ -244,6 +373,18 @@ export interface LlmProvider {
   isDefault: boolean;
   status?: string;
   apiKey?: string;
+}
+
+export interface AudioProvider {
+  id: string;
+  seriesId: string;
+  provider: "MAGE";
+  displayName: string;
+  model: "seed-audio-1.0";
+  isActive: boolean;
+  hasApiKey: boolean;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface SearchResult {
@@ -397,6 +538,10 @@ export const manuscriptApi = {
     api
       .get<Record<string, unknown>>(`/api/series/${seriesId}/scenes/${sceneId}`)
       .then((r) => normalizeScene(r.data)),
+  updateAct: (seriesId: string, actId: string, data: Partial<Act>) =>
+    api.put<Act>(`/api/series/${seriesId}/acts/${actId}`, data).then((r) => r.data),
+  updateScene: (seriesId: string, sceneId: string, data: Partial<Scene>) =>
+    api.put<Scene>(`/api/series/${seriesId}/scenes/${sceneId}`, data).then((r) => r.data),
 };
 
 // ─── Bible ────────────────────────────────────────────────────────────────────
@@ -429,6 +574,77 @@ export const worldApi = {
       .then((r) => r.data),
   delete: (seriesId: string, entityId: string) =>
     api.delete(`/api/series/${seriesId}/world/${entityId}`),
+  listCharacterVersions: (seriesId: string, entityId: string) =>
+    api
+      .get<CharacterVersion[]>(`/api/series/${seriesId}/world/${entityId}/versions`)
+      .then((r) => r.data),
+  createCharacterVersion: (
+    seriesId: string,
+    entityId: string,
+    data: Partial<CharacterVersion>,
+  ) =>
+    api
+      .post<CharacterVersion>(`/api/series/${seriesId}/world/${entityId}/versions`, data)
+      .then((r) => r.data),
+  updateCharacterVersion: (
+    seriesId: string,
+    entityId: string,
+    versionId: string,
+    data: Partial<CharacterVersion>,
+  ) =>
+    api
+      .put<CharacterVersion>(
+        `/api/series/${seriesId}/world/${entityId}/versions/${versionId}`,
+        data,
+      )
+      .then((r) => r.data),
+  deleteCharacterVersion: (seriesId: string, entityId: string, versionId: string) =>
+    api.delete(`/api/series/${seriesId}/world/${entityId}/versions/${versionId}`),
+  generateCharacterVersionPrompt: (
+    seriesId: string,
+    entityId: string,
+    versionId: string,
+  ) =>
+    api
+      .post<CharacterVersion>(
+        `/api/series/${seriesId}/world/${entityId}/versions/${versionId}/generate-prompt`,
+      )
+      .then((r) => r.data),
+  generateBaseCharacterPrompt: (
+    seriesId: string,
+    entityId: string,
+    data: Partial<WorldEntity>,
+  ) =>
+    api
+      .post<WorldEntity>(
+        `/api/series/${seriesId}/world/${entityId}/generate-visual-prompt`,
+        data,
+      )
+      .then((r) => r.data),
+  generateVoiceSample: (
+    seriesId: string,
+    entityId: string,
+    voiceProfile: string,
+    sampleText?: string,
+  ) =>
+    api
+      .post<{
+        assetId: string;
+        voiceSampleAssetId: string;
+        downloadUrl: string;
+        durationSeconds: 5;
+        provider: "MAGE";
+        model: "seed-audio-1.0";
+        gemsCharged?: number;
+      }>(
+        `/api/series/${seriesId}/world/${entityId}/generate-voice-sample`,
+        { voiceProfile, sampleText: sampleText || undefined },
+      )
+      .then((r) => r.data),
+  getEntityAssignmentHistory: (seriesId: string, entityId: string) =>
+    api
+      .get<AssetAssignment[]>(`/api/series/${seriesId}/world/${entityId}/assignment-history`)
+      .then((r) => r.data),
 };
 
 // ─── Search ───────────────────────────────────────────────────────────────────
@@ -453,7 +669,21 @@ export const searchApi = {
 
 // ─── Assets ───────────────────────────────────────────────────────────────────
 export interface AssetList { items: Asset[]; total: number; }
-export interface InitiateUploadPayload { filename: string; mimeType: string; sizeBytes: number; title?: string; }
+export interface InitiateUploadPayload {
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  type: "IMAGE" | "AUDIO" | "VIDEO" | "DOCUMENT" | "STORYBOARD" | "OTHER";
+  title?: string;
+  description?: string;
+  tags?: string[];
+  versionNotes?: string;
+  isFinal?: boolean;
+  linkedEntityId?: string;
+  linkedActId?: string;
+  linkedSceneId?: string;
+  linkedClipId?: string;
+}
 export interface InitiateUploadResponse { assetId: string; uploadUrl: string; expiresIn: number; }
 
 export const assetsApi = {
@@ -509,6 +739,40 @@ export const assetsApi = {
   },
   uploadToPresigned: (url: string, file: File) =>
     axios.put(url, file, { headers: { "Content-Type": file.type } }),
+  update: (seriesId: string, assetId: string, payload: Partial<Asset>) =>
+    api
+      .put<Asset>(`/api/series/${seriesId}/assets/${assetId}`, payload)
+      .then((r) => r.data),
+  getById: (seriesId: string, assetId: string) =>
+    api
+      .get<Asset>(`/api/series/${seriesId}/assets/${assetId}`)
+      .then((r) => r.data),
+  getDownload: (seriesId: string, assetId: string) =>
+    api
+      .get<{ downloadUrl: string; filename: string; expiresIn: number }>(
+        `/api/series/${seriesId}/assets/${assetId}/download`,
+      )
+      .then((r) => r.data),
+  getAssignmentHistory: (seriesId: string, assetId: string) =>
+    api
+      .get<AssetAssignment[]>(`/api/series/${seriesId}/assets/${assetId}/assignments`)
+      .then((r) => r.data),
+  abandonAssignment: (
+    seriesId: string,
+    assetId: string,
+    assignmentId: string,
+    note?: string,
+  ) =>
+    api
+      .post<AssetAssignment>(
+        `/api/series/${seriesId}/assets/${assetId}/assignments/${assignmentId}/abandon`,
+        { note },
+      )
+      .then((r) => r.data),
+  deleteAsset: (seriesId: string, assetId: string) =>
+    api
+      .delete(`/api/series/${seriesId}/assets/${assetId}`)
+      .then((r) => r.data),
 };
 
 // ─── Clips ────────────────────────────────────────────────────────────────────
@@ -602,6 +866,156 @@ export const settingsApi = {
       .then((r) => ({ ok: r.data.success, message: r.data.error })),
   deleteProvider: (seriesId: string, providerId: string) =>
     api.delete(`/api/series/${seriesId}/providers/${providerId}`),
+  listAudioProviders: (seriesId: string) =>
+    api
+      .get<AudioProvider[]>(`/api/series/${seriesId}/audio-providers`)
+      .then((r) => r.data),
+  addMageAudioProvider: (
+    seriesId: string,
+    data: { apiKey: string; displayName?: string },
+  ) =>
+    api
+      .post<AudioProvider>(`/api/series/${seriesId}/audio-providers`, data)
+      .then((r) => r.data),
+  testAudioProvider: (seriesId: string, providerId: string) =>
+    api
+      .post<{ success: boolean }>(
+        `/api/series/${seriesId}/audio-providers/${providerId}/test`,
+      )
+      .then((r) => r.data),
+  deleteAudioProvider: (seriesId: string, providerId: string) =>
+    api.delete(`/api/series/${seriesId}/audio-providers/${providerId}`),
+};
+
+// ─── Draft Manuscript ─────────────────────────────────────────────────────────
+
+export interface DraftManuscript {
+  id: string;
+  seriesId: string;
+  content: string;
+  revisionNum: number;
+  updatedAt: string;
+}
+
+export interface ManuscriptRevision {
+  id: string;
+  manuscriptId: string;
+  revisionNum: number;
+  contentPreview?: string;
+  content?: string;
+  authorId: string;
+  authorName?: string;
+  createdAt: string;
+}
+
+export const draftApi = {
+  get: (seriesId: string) =>
+    api.get<DraftManuscript>(`/api/series/${seriesId}/draft-manuscript`).then((r) => r.data),
+  save: (seriesId: string, content: string, expectedRevision: number) =>
+    api
+      .put<DraftManuscript>(`/api/series/${seriesId}/draft-manuscript`, {
+        content,
+        expectedRevision,
+      })
+      .then((r) => r.data),
+  revisions: (seriesId: string) =>
+    api
+      .get<{ items: ManuscriptRevision[] }>(`/api/series/${seriesId}/draft-manuscript/revisions`)
+      .then((r) => r.data.items),
+  restore: (seriesId: string, revisionId: string) =>
+    api
+      .post<DraftManuscript>(`/api/series/${seriesId}/draft-manuscript/revisions/restore`, {
+        revisionId,
+      })
+      .then((r) => r.data),
+};
+
+// ─── Assistant / Chat ──────────────────────────────────────────────────────────
+
+export type ProposalStatus = "PENDING" | "APPROVED" | "APPLIED" | "REJECTED" | "STALE" | "FAILED";
+
+export interface ChatThread {
+  id: string;
+  seriesId: string;
+  userId: string;
+  title: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChangeProposal {
+  id: string;
+  seriesId: string;
+  threadId: string;
+  messageId: string;
+  status: ProposalStatus;
+  commandType: string;
+  entityType: string;
+  targetPath: Record<string, string | null>;
+  payload: Record<string, unknown>;
+  beforeSnap?: Record<string, unknown> | null;
+  afterSnap?: Record<string, unknown> | null;
+  validationErrors?: string | null;
+  appliedRecordId?: string | null;
+  humanReadable: string;
+  createdAt: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  threadId: string;
+  seriesId: string;
+  role: "USER" | "ASSISTANT" | "SYSTEM";
+  content: string;
+  proposals?: ChangeProposal[];
+  createdAt: string;
+}
+
+export interface RouteContext {
+  page?: string;
+  episodeId?: string;
+  seasonId?: string;
+  actId?: string;
+  sceneId?: string;
+  clipId?: string;
+}
+
+export const assistantApi = {
+  getOrCreateThread: (seriesId: string) =>
+    api.get<ChatThread>(`/api/series/${seriesId}/assistant/thread`).then((r) => r.data),
+  newThread: (seriesId: string) =>
+    api.post<ChatThread>(`/api/series/${seriesId}/assistant/thread/new`).then((r) => r.data),
+  listThreads: (seriesId: string) =>
+    api.get<ChatThread[]>(`/api/series/${seriesId}/assistant/threads`).then((r) => r.data),
+  getMessages: (seriesId: string, threadId: string) =>
+    api
+      .get<ChatMessage[]>(`/api/series/${seriesId}/assistant/threads/${threadId}/messages`)
+      .then((r) => r.data),
+  sendMessage: (
+    seriesId: string,
+    threadId: string,
+    content: string,
+    routeContext?: RouteContext,
+  ) =>
+    api
+      .post<{ message: ChatMessage; proposals: ChangeProposal[] }>(
+        `/api/series/${seriesId}/assistant/threads/${threadId}/messages`,
+        { content, routeContext },
+      )
+      .then((r) => r.data),
+  approveProposal: (seriesId: string, proposalId: string) =>
+    api
+      .post<{ proposal: ChangeProposal; appliedRecordId?: string }>(
+        `/api/series/${seriesId}/assistant/proposals/${proposalId}/approve`,
+      )
+      .then((r) => r.data),
+  rejectProposal: (seriesId: string, proposalId: string) =>
+    api
+      .post<{ proposal: ChangeProposal }>(
+        `/api/series/${seriesId}/assistant/proposals/${proposalId}/reject`,
+      )
+      .then((r) => r.data),
 };
 
 export default api;

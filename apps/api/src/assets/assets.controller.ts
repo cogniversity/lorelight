@@ -105,6 +105,17 @@ export class AssetsController {
    * GET /api/series/:seriesId/assets/:assetId
    * Returns the asset with a 1-hour presigned download URL.
    */
+  @Get(':assetId/download')
+  @ApiOperation({ summary: 'Create a short-lived attachment download URL (VIEWER+)' })
+  @ApiParam({ name: 'seriesId' })
+  @ApiParam({ name: 'assetId' })
+  getDownload(
+    @Param('seriesId') seriesId: string,
+    @Param('assetId') assetId: string,
+  ) {
+    return this.assetsService.getDownload(seriesId, assetId);
+  }
+
   @Get(':assetId')
   @ApiOperation({ summary: 'Get a single asset with a 1-hour presigned download URL' })
   @ApiParam({ name: 'seriesId' })
@@ -131,6 +142,38 @@ export class AssetsController {
     @Body() dto: UpdateAssetDto,
   ) {
     return this.assetsService.updateAsset(seriesId, assetId, dto);
+  }
+
+  /**
+   * GET /api/series/:seriesId/assets/:assetId/assignments
+   * Returns assignment history for this asset.
+   */
+  @Get(':assetId/assignments')
+  @ApiOperation({ summary: 'Get assignment history for an asset (VIEWER+)' })
+  @ApiParam({ name: 'seriesId' })
+  @ApiParam({ name: 'assetId' })
+  getAssignmentHistory(
+    @Param('seriesId') seriesId: string,
+    @Param('assetId') assetId: string,
+  ) {
+    return this.assetsService.getAssignmentHistory(seriesId, assetId);
+  }
+
+  @Post(':assetId/assignments/:assignmentId/abandon')
+  @Roles(SeriesRole.WRITER)
+  @ApiOperation({ summary: 'Abandon an active asset assignment (WRITER+)' })
+  abandonAssignment(
+    @Param('seriesId') seriesId: string,
+    @Param('assetId') assetId: string,
+    @Param('assignmentId') assignmentId: string,
+    @Body() body: { note?: string },
+  ) {
+    return this.assetsService.abandonAssignment(
+      seriesId,
+      assetId,
+      assignmentId,
+      body.note,
+    );
   }
 
   /**

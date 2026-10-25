@@ -10,13 +10,19 @@ import {
   Boxes,
   Clock3,
   Compass,
+  Download,
+  Image,
   MapPin,
+  Mic,
+  Sparkles,
+  Upload,
   UsersRound,
 } from "lucide-react";
-import { worldApi, WorldEntity } from "../api/client";
+import { assetsApi, Asset, worldApi, WorldEntity } from "../api/client";
 import { useSeriesContext } from "../layouts/SeriesLayout";
 import { StatusPill } from "../components/StatusPill";
 import { SkeletonRow } from "../components/Skeleton";
+import CharacterVersionsPanel from "../components/CharacterVersionsPanel";
 
 type EntityType =
   | "CHARACTER"
@@ -88,6 +94,9 @@ const initials = (v: string) =>
     .join("")
     .toUpperCase();
 
+const parseEntityTags = (value: string) =>
+  [...new Set(value.split(",").map((tag) => tag.trim().toLowerCase()).filter(Boolean))];
+
 // ─── Entity Modal ──────────────────────────────────────────────────────────────
 function EntityModal({
   entityType,
@@ -95,12 +104,20 @@ function EntityModal({
   onClose,
   onSave,
   onDelete,
+  assets,
+  onUploadMedia,
+  uploadingMedia,
+  seriesId,
 }: {
   entityType: EntityType;
   entity?: WorldEntity;
   onClose: () => void;
   onSave: (data: Partial<WorldEntity>) => void;
   onDelete?: () => void;
+  assets: Asset[];
+  onUploadMedia?: (file: File, kind: "photo" | "voice" | "reference") => void;
+  uploadingMedia?: "photo" | "voice" | "reference" | null;
+  seriesId: string;
 }) {
   const meta = TYPE_META[entityType];
   const [displayName, setDisplayName] = useState(entity?.displayName ?? "");
@@ -108,6 +125,35 @@ function EntityModal({
   const [subtitle, setSubtitle] = useState(entity?.subtitle ?? "");
   const [description, setDescription] = useState(entity?.description ?? "");
   const [status, setStatus] = useState(entity?.status ?? meta.statuses[0]);
+  const [tags, setTags] = useState(entity?.tags?.join(", ") ?? "");
+  const [age, setAge] = useState(entity?.age ?? 20);
+  const [ethnicity, setEthnicity] = useState(entity?.ethnicity ?? "");
+  const [skinTone, setSkinTone] = useState(
+    entity?.skinTone ?? "Fitzpatrick Type II Pinkish-ivory skin",
+  );
+  const [facialFeatures, setFacialFeatures] = useState(entity?.facialFeatures ?? "");
+  const [visualSilhouetteDress, setVisualSilhouetteDress] = useState(
+    entity?.visualSilhouetteDress ?? "",
+  );
+  const [voiceProfile, setVoiceProfile] = useState(entity?.voiceProfile ?? "");
+  const [visualDescription, setVisualDescription] = useState(
+    entity?.visualDescription ?? "",
+  );
+  const [mannerisms, setMannerisms] = useState(entity?.mannerisms ?? "");
+  const [biography, setBiography] = useState(entity?.biography ?? "");
+  const [architectureNotes, setArchitectureNotes] = useState(entity?.architectureNotes ?? "");
+  const [moodNotes, setMoodNotes] = useState(entity?.moodNotes ?? "");
+  const [lightingNotes, setLightingNotes] = useState(entity?.lightingNotes ?? "");
+  const [environmentNotes, setEnvironmentNotes] = useState(entity?.environmentNotes ?? "");
+  const [weatherNotes, setWeatherNotes] = useState(entity?.weatherNotes ?? "");
+  const [origin, setOrigin] = useState(entity?.origin ?? "");
+  const [currentOwner, setCurrentOwner] = useState(entity?.currentOwner ?? "");
+  const [importance, setImportance] = useState(entity?.importance ?? "");
+  const [baseImagePrompt, setBaseImagePrompt] = useState(entity?.imagePrompt ?? "");
+  const [basePromptMessage, setBasePromptMessage] = useState("");
+  const [generatedVoiceUrl, setGeneratedVoiceUrl] = useState("");
+  const [voiceGenerationMessage, setVoiceGenerationMessage] = useState("");
+  const modalQueryClient = useQueryClient();
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
@@ -118,9 +164,97 @@ function EntityModal({
       subtitle: subtitle.trim(),
       description: description.trim(),
       status,
+      tags: parseEntityTags(tags),
       type: entityType,
+      ...(entityType === "CHARACTER" && {
+        age,
+        ethnicity: ethnicity.trim() || undefined,
+        skinTone: skinTone.trim(),
+        facialFeatures: facialFeatures.trim(),
+        visualSilhouetteDress: visualSilhouetteDress.trim(),
+        voiceProfile: voiceProfile.trim(),
+        visualDescription: visualDescription.trim(),
+        mannerisms: mannerisms.trim(),
+        biography: biography.trim(),
+      }),
+      ...(entityType === "LOCATION" && {
+        architectureNotes: architectureNotes.trim(),
+        moodNotes: moodNotes.trim(),
+        lightingNotes: lightingNotes.trim(),
+        environmentNotes: environmentNotes.trim(),
+        weatherNotes: weatherNotes.trim(),
+      }),
+      ...(entityType === "ARTIFACT" && {
+        origin: origin.trim(),
+        currentOwner: currentOwner.trim(),
+        importance: importance.trim(),
+      }),
     });
   };
+
+  const profilePhoto = assets.find((asset) => asset.id === entity?.profilePhotoAssetId);
+  const voiceSample = assets.find((asset) => asset.id === entity?.voiceSampleAssetId);
+  const referenceImage = assets.find((asset) => asset.id === entity?.referenceImageAssetId);
+  const { data: assignmentHistory = [] } = useQuery({
+    queryKey: ["entity-assignment-history", seriesId, entity?.id],
+    queryFn: () => worldApi.getEntityAssignmentHistory(seriesId, entity!.id),
+    enabled: !!entity,
+  });
+  const basePromptMutation = useMutation({
+    mutationFn: () =>
+      worldApi.generateBaseCharacterPrompt(seriesId, entity!.id, {
+        displayName,
+        externalId,
+        description,
+        age,
+        ethnicity,
+        skinTone,
+        facialFeatures,
+        visualSilhouetteDress,
+        visualDescription,
+        voiceProfile,
+        mannerisms,
+      }),
+    onSuccess: async (updated) => {
+      setBaseImagePrompt(updated.imagePrompt ?? "");
+      setBasePromptMessage(`Generated for base version of ${displayName}`);
+      await modalQueryClient.invalidateQueries({
+        queryKey: ["world", seriesId, entityType],
+      });
+    },
+    onError: (error: any) =>
+      setBasePromptMessage(
+        error?.response?.data?.message ??
+          "Prompt generation failed. Check the series LLM provider.",
+      ),
+  });
+  const voiceSampleMutation = useMutation({
+    mutationFn: () =>
+      worldApi.generateVoiceSample(seriesId, entity!.id, voiceProfile),
+    onSuccess: async (result) => {
+      setGeneratedVoiceUrl(result.downloadUrl);
+      setVoiceGenerationMessage(
+        `Generated 5-second Mage sample${
+          result.gemsCharged !== undefined
+            ? ` · ${result.gemsCharged} gems`
+            : ""
+        }`,
+      );
+      await Promise.all([
+        modalQueryClient.invalidateQueries({ queryKey: ["assets", seriesId] }),
+        modalQueryClient.invalidateQueries({
+          queryKey: ["world", seriesId, entityType],
+        }),
+        modalQueryClient.invalidateQueries({
+          queryKey: ["entity-assignment-history", seriesId, entity?.id],
+        }),
+      ]);
+    },
+    onError: (error: any) =>
+      setVoiceGenerationMessage(
+        error?.response?.data?.message ?? "Voice sample generation failed",
+      ),
+  });
 
   return (
     <div className="modal-backdrop" onMouseDown={onClose}>
@@ -190,6 +324,342 @@ function EntityModal({
           />
         </label>
 
+        <label>
+          Tags
+          <input
+            value={tags}
+            onChange={(e) => setTags(e.target.value)}
+            placeholder="searchable, metadata, tags"
+          />
+        </label>
+
+        {entityType === "CHARACTER" && (
+          <section className="character-profile-fields">
+            <div className="character-profile-section-head">
+              <span className="eyebrow">CHARACTER APPEARANCE & PERFORMANCE</span>
+              <p>These details are available to story and production prompts.</p>
+            </div>
+
+            <div className="modal-fields">
+              <label>
+                Age
+                <input
+                  type="number"
+                  min={0}
+                  max={200}
+                  value={age}
+                  onChange={(event) => setAge(Number(event.target.value))}
+                />
+              </label>
+              <label>
+                Ethnicity <small>(optional)</small>
+                <input
+                  value={ethnicity}
+                  onChange={(event) => setEthnicity(event.target.value)}
+                  placeholder="Optional cultural or ethnic identity"
+                />
+              </label>
+            </div>
+
+            <label>
+              Skin tone
+              <input
+                value={skinTone}
+                onChange={(event) => setSkinTone(event.target.value)}
+                placeholder="Fitzpatrick type and descriptive tone"
+              />
+            </label>
+
+            <label>
+              Facial features
+              <textarea
+                value={facialFeatures}
+                onChange={(e) => setFacialFeatures(e.target.value)}
+                placeholder="Face shape, eyes, hair, complexion, distinguishing marks…"
+              />
+            </label>
+
+            <label>
+              Visual Silhouette &amp; Dress
+              <textarea
+                value={visualSilhouetteDress}
+                onChange={(e) => setVisualSilhouetteDress(e.target.value)}
+                placeholder="Recognizable silhouette, build, posture, wardrobe, palette, accessories…"
+              />
+            </label>
+
+            <label>
+              Overall visual profile
+              <textarea
+                value={visualDescription}
+                onChange={(e) => setVisualDescription(e.target.value)}
+                placeholder="The complete visual direction for image and video generation…"
+              />
+            </label>
+
+            <label>
+              Voice Profile
+              <textarea
+                value={voiceProfile}
+                onChange={(e) => setVoiceProfile(e.target.value)}
+                placeholder="Age, register, accent, cadence, texture, emotional range, delivery notes…"
+              />
+            </label>
+
+            <label>
+              Mannerisms &amp; physical behavior
+              <textarea
+                value={mannerisms}
+                onChange={(e) => setMannerisms(e.target.value)}
+                placeholder="Gestures, posture, movement patterns, habitual expressions…"
+              />
+            </label>
+
+            <label>
+              Biography
+              <textarea
+                value={biography}
+                onChange={(e) => setBiography(e.target.value)}
+                placeholder="Background and personal history…"
+              />
+            </label>
+
+            <div className="base-character-prompt">
+              <div>
+                <span className="eyebrow">BASE VERSION VISUAL PROMPT</span>
+                <p>
+                  Generates the canonical appearance for {displayName || "this character"},
+                  separate from story-specific versions.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="outline-button"
+                disabled={!entity || basePromptMutation.isPending}
+                onClick={() => basePromptMutation.mutate()}
+              >
+                <Sparkles size={13} />
+                {basePromptMutation.isPending
+                  ? `Generating for ${displayName}…`
+                  : `Generate base prompt for “${displayName || "character"}”`}
+              </button>
+              {baseImagePrompt && (
+                <label>
+                  Base visual prompt for “{displayName}”
+                  <textarea
+                    className="character-generated-prompt"
+                    readOnly
+                    value={baseImagePrompt}
+                  />
+                </label>
+              )}
+              {basePromptMessage && <small>{basePromptMessage}</small>}
+            </div>
+
+            <div className="character-media-grid">
+              <div className="character-media-field">
+                <span>Profile photo</span>
+                {profilePhoto?.thumbnailUrl || profilePhoto?.downloadUrl ? (
+                  <img
+                    src={profilePhoto.thumbnailUrl ?? profilePhoto.downloadUrl}
+                    alt={`${entity?.displayName ?? "Character"} profile`}
+                  />
+                ) : (
+                  <div className="character-media-placeholder">
+                    <Image size={22} />
+                    <small>No profile photo</small>
+                  </div>
+                )}
+                {entity && onUploadMedia ? (
+                  <label className="character-media-upload">
+                    <Upload size={13} />
+                    {uploadingMedia === "photo" ? "Uploading…" : "Upload image"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={!!uploadingMedia}
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        if (file) onUploadMedia(file, "photo");
+                        event.target.value = "";
+                      }}
+                    />
+                  </label>
+                ) : (
+                  <small className="character-media-hint">Save the character before uploading.</small>
+                )}
+                {profilePhoto?.downloadUrl && (
+                  <a className="character-media-upload" href={profilePhoto.downloadUrl} download={profilePhoto.filename}>
+                    <Download size={13} /> Download image
+                  </a>
+                )}
+              </div>
+
+              <div className="character-media-field">
+                <span>Voice sample</span>
+                {generatedVoiceUrl || voiceSample?.downloadUrl ? (
+                  <audio
+                    controls
+                    preload="metadata"
+                    src={generatedVoiceUrl || voiceSample?.downloadUrl}
+                  >
+                    Your browser does not support audio playback.
+                  </audio>
+                ) : (
+                  <div className="character-media-placeholder">
+                    <Mic size={22} />
+                    <small>No voice sample</small>
+                  </div>
+                )}
+                {entity && onUploadMedia ? (
+                  <>
+                    <label className="character-media-upload">
+                      <Upload size={13} />
+                      {uploadingMedia === "voice" ? "Uploading…" : "Upload audio"}
+                      <input
+                        type="file"
+                        accept="audio/*"
+                        disabled={!!uploadingMedia}
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file) onUploadMedia(file, "voice");
+                          event.target.value = "";
+                        }}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="character-media-upload"
+                      disabled={
+                        voiceSampleMutation.isPending || !voiceProfile.trim()
+                      }
+                      onClick={() => voiceSampleMutation.mutate()}
+                    >
+                      <Sparkles size={13} />
+                      {voiceSampleMutation.isPending
+                        ? "Generating 5-second sample…"
+                        : "Generate with Mage · 5 sec"}
+                    </button>
+                    <small className="character-media-hint">
+                      Voice-profile reference only. Mage Gems are charged.
+                    </small>
+                    {voiceGenerationMessage && (
+                      <small className="character-version-message">
+                        {voiceGenerationMessage}
+                      </small>
+                    )}
+                  </>
+                ) : (
+                  <small className="character-media-hint">Save the character before uploading.</small>
+                )}
+                {(generatedVoiceUrl || voiceSample?.downloadUrl) && (
+                  <a
+                    className="character-media-upload"
+                    href={generatedVoiceUrl || voiceSample?.downloadUrl}
+                    download={voiceSample?.filename || `${displayName}-voice-sample.mp3`}
+                  >
+                    <Download size={13} /> Download voice sample
+                  </a>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
+
+        {["CHARACTER", "LOCATION", "ARTIFACT"].includes(entityType) && entity && (
+          <CharacterVersionsPanel
+            seriesId={seriesId}
+            entity={entity}
+            assets={assets}
+          />
+        )}
+
+        {(entityType === "LOCATION" || entityType === "ARTIFACT") && (
+          <section className="character-profile-fields">
+            {entityType === "LOCATION" ? (
+              <>
+                <label>Architecture notes<textarea value={architectureNotes} onChange={(e) => setArchitectureNotes(e.target.value)} /></label>
+                <label>Mood notes<textarea value={moodNotes} onChange={(e) => setMoodNotes(e.target.value)} /></label>
+                <label>Lighting notes<textarea value={lightingNotes} onChange={(e) => setLightingNotes(e.target.value)} /></label>
+                <label>Environment notes<textarea value={environmentNotes} onChange={(e) => setEnvironmentNotes(e.target.value)} /></label>
+                <label>Weather notes<textarea value={weatherNotes} onChange={(e) => setWeatherNotes(e.target.value)} /></label>
+              </>
+            ) : (
+              <>
+                <label>Origin<textarea value={origin} onChange={(e) => setOrigin(e.target.value)} /></label>
+                <label>Current owner<textarea value={currentOwner} onChange={(e) => setCurrentOwner(e.target.value)} /></label>
+                <label>Importance<textarea value={importance} onChange={(e) => setImportance(e.target.value)} /></label>
+              </>
+            )}
+            <div className="character-profile-section-head">
+              <span className="eyebrow">VISUAL REFERENCE</span>
+              <p>Save a canonical reference image for this {meta.singular}.</p>
+            </div>
+            <div className="character-media-field">
+              <span>{entityType === "LOCATION" ? "Location photo" : "Artifact photo"}</span>
+              {referenceImage?.thumbnailUrl || referenceImage?.downloadUrl ? (
+                <img
+                  src={referenceImage.thumbnailUrl ?? referenceImage.downloadUrl}
+                  alt={`${entity?.displayName ?? meta.singular} reference`}
+                />
+              ) : (
+                <div className="character-media-placeholder">
+                  <Image size={22} />
+                  <small>No reference image</small>
+                </div>
+              )}
+              {entity && onUploadMedia ? (
+                <label className="character-media-upload">
+                  <Upload size={13} />
+                  {uploadingMedia === "reference" ? "Uploading…" : "Upload image"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    disabled={!!uploadingMedia}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      if (file) onUploadMedia(file, "reference");
+                      event.target.value = "";
+                    }}
+                  />
+                </label>
+              ) : (
+                <small className="character-media-hint">Save the {meta.singular} before uploading.</small>
+              )}
+              {referenceImage?.downloadUrl && (
+                <a className="character-media-upload" href={referenceImage.downloadUrl} download={referenceImage.filename}>
+                  <Download size={13} /> Download image
+                </a>
+              )}
+            </div>
+          </section>
+        )}
+
+        {entity && assignmentHistory.length > 0 && (
+          <section className="character-profile-fields asset-lifecycle-history">
+            <div className="character-profile-section-head">
+              <span className="eyebrow">ASSET LIFECYCLE</span>
+              <p>Current and previously replaced media for this {meta.singular}.</p>
+            </div>
+            {assignmentHistory.map((assignment) => (
+              <div className="asset-lifecycle-row" key={assignment.id}>
+                <span className={`asset-assignment-status ${assignment.status.toLowerCase()}`}>
+                  {assignment.status}
+                </span>
+                <div>
+                  <strong>{assignment.asset?.title ?? assignment.role.replace(/_/g, " ")}</strong>
+                  <small>
+                    {assignment.role.replace(/_/g, " ")}
+                    {assignment.asset?.source ? ` · ${assignment.asset.source.replace(/_/g, " ")}` : ""}
+                    {assignment.asset?.generationModel ? ` · ${assignment.asset.generationModel}` : ""}
+                  </small>
+                  {assignment.note && <p>{assignment.note}</p>}
+                </div>
+              </div>
+            ))}
+          </section>
+        )}
+
         <div className="modal-actions">
           {entity && onDelete && (
             <button className="danger-text" type="button" onClick={onDelete}>
@@ -220,6 +690,9 @@ export default function WorldPage({ entityType }: Props) {
   const [statusFilter, setStatusFilter] = useState("All");
   const [modal, setModal] = useState<{ entity?: WorldEntity } | null>(null);
   const [toast, setToast] = useState("");
+  const [uploadingMedia, setUploadingMedia] = useState<
+    "photo" | "voice" | "reference" | null
+  >(null);
 
   const notify = (msg: string) => {
     setToast(msg);
@@ -231,6 +704,74 @@ export default function WorldPage({ entityType }: Props) {
     queryFn: () => worldApi.list(seriesId, entityType),
     enabled: !!seriesId,
   });
+
+  const { data: assets = [] } = useQuery({
+    queryKey: ["assets", seriesId],
+    queryFn: () => assetsApi.list(seriesId),
+    enabled:
+      !!seriesId &&
+      ["CHARACTER", "LOCATION", "ARTIFACT"].includes(entityType),
+  });
+
+  const uploadCharacterMedia = async (
+    entity: WorldEntity,
+    file: File,
+    kind: "photo" | "voice" | "reference",
+  ) => {
+    setUploadingMedia(kind);
+    const label =
+      kind === "photo"
+        ? "Profile Photo"
+        : kind === "voice"
+          ? "Voice Sample"
+          : "Reference Image";
+    try {
+      const isPhoto = kind !== "voice";
+      const initiated = await assetsApi.initiateUpload(seriesId, {
+        filename: file.name,
+        mimeType: file.type || (isPhoto ? "image/jpeg" : "audio/mpeg"),
+        sizeBytes: file.size,
+        type: isPhoto ? "IMAGE" : "AUDIO",
+        title: `${entity.displayName} — ${label}`,
+        description: `${label} for ${entity.displayName}`,
+        tags: [
+          kind === "photo"
+            ? "character-profile"
+            : kind === "voice"
+              ? "character-voice-sample"
+              : `${entity.type.toLowerCase()}-reference`,
+        ],
+        linkedEntityId: entity.id,
+      });
+      await assetsApi.uploadToPresigned(initiated.uploadUrl, file);
+      const asset = await assetsApi.completeUpload(seriesId, initiated.assetId);
+      const updated = await worldApi.update(seriesId, entity.id, {
+        [
+          kind === "photo"
+            ? "profilePhotoAssetId"
+            : kind === "voice"
+              ? "voiceSampleAssetId"
+              : "referenceImageAssetId"
+        ]: asset.id,
+      });
+      setModal({ entity: updated });
+      await Promise.all([
+        qc.invalidateQueries({ queryKey: ["assets", seriesId] }),
+        qc.invalidateQueries({ queryKey: ["world", seriesId, entityType] }),
+        qc.invalidateQueries({
+          queryKey: ["entity-assignment-history", seriesId, entity.id],
+        }),
+      ]);
+      notify(`${label} uploaded`);
+    } catch (error: any) {
+      notify(
+        error?.response?.data?.message ??
+          `Unable to upload ${label.toLowerCase()}`,
+      );
+    } finally {
+      setUploadingMedia(null);
+    }
+  };
 
   const createMutation = useMutation({
     mutationFn: (data: Partial<WorldEntity>) =>
@@ -270,6 +811,14 @@ export default function WorldPage({ entityType }: Props) {
   );
 
   const isCharOrLoc = entityType === "CHARACTER" || entityType === "LOCATION";
+  const getAsset = (assetId?: string) =>
+    assetId ? assets.find((asset) => asset.id === assetId) : undefined;
+  const getVisualAsset = (entity: WorldEntity) =>
+    getAsset(
+      entity.type === "CHARACTER"
+        ? entity.profilePhotoAssetId
+        : entity.referenceImageAssetId,
+    );
 
   return (
     <>
@@ -335,7 +884,19 @@ export default function WorldPage({ entityType }: Props) {
                       } as React.CSSProperties
                     }
                   >
-                    <span>{initials(entity.displayName)}</span>
+                    {getVisualAsset(entity)?.thumbnailUrl ||
+                    getVisualAsset(entity)?.downloadUrl ? (
+                      <img
+                        className="character-profile-photo"
+                        src={
+                          getVisualAsset(entity)?.thumbnailUrl ??
+                          getVisualAsset(entity)?.downloadUrl
+                        }
+                        alt={entity.displayName}
+                      />
+                    ) : (
+                      <span>{initials(entity.displayName)}</span>
+                    )}
                     <i>{entity.status}</i>
                   </div>
                   <div className="character-copy">
@@ -344,7 +905,11 @@ export default function WorldPage({ entityType }: Props) {
                     {entity.externalId && <code className="external-id-badge">{entity.externalId}</code>}
                     <p>"{entity.description}"</p>
                     <div>
-                      <span>{entity.tags?.join(" · ") || "Profile ready"}</span>
+                      <span>
+                        {entity.type === "CHARACTER" && entity.voiceSampleAssetId
+                          ? "Voice sample ready"
+                          : entity.tags?.join(" · ") || "Profile ready"}
+                      </span>
                       <button onClick={() => setModal({ entity })}>
                         Open profile <ChevronRight size={14} />
                       </button>
@@ -421,6 +986,7 @@ export default function WorldPage({ entityType }: Props) {
 
       {modal && (
         <EntityModal
+          seriesId={seriesId}
           entityType={entityType}
           entity={modal.entity}
           onClose={() => setModal(null)}
@@ -431,6 +997,14 @@ export default function WorldPage({ entityType }: Props) {
               createMutation.mutate(data);
             }
           }}
+          assets={assets}
+          uploadingMedia={uploadingMedia}
+          onUploadMedia={
+            modal.entity &&
+            ["CHARACTER", "LOCATION", "ARTIFACT"].includes(entityType)
+              ? (file, kind) => uploadCharacterMedia(modal.entity!, file, kind)
+              : undefined
+          }
           onDelete={
             modal.entity
               ? () => {

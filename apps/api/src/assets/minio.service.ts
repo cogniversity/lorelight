@@ -71,6 +71,21 @@ export class MinioService implements OnModuleInit {
     return this.client.presignedGetObject(this.bucket, objectKey, expirySeconds);
   }
 
+  async presignedDownloadUrl(
+    objectKey: string,
+    filename: string,
+    expirySeconds = 3600,
+  ): Promise<string> {
+    const disposition =
+      `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`;
+    return this.client.presignedGetObject(
+      this.bucket,
+      objectKey,
+      expirySeconds,
+      { 'response-content-disposition': disposition },
+    );
+  }
+
   /**
    * Returns true if the object exists in the bucket.
    */
@@ -81,6 +96,16 @@ export class MinioService implements OnModuleInit {
     } catch {
       return false;
     }
+  }
+
+  async putObject(
+    objectKey: string,
+    data: Buffer,
+    contentType: string,
+  ): Promise<void> {
+    await this.client.putObject(this.bucket, objectKey, data, data.length, {
+      'Content-Type': contentType,
+    });
   }
 
   /**

@@ -8,3 +8,5 @@ export * from './assets';
 export * from './generation';
 export * from './search';
 export * from './user';
+export * from './draft-manuscript';
+export * from './assistant';

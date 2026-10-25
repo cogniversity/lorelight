@@ -94,7 +94,21 @@ Use vivid, cinematic language. Be specific about camera work, lighting, mood, an
                 type: true,
                 description: true,
                 subtitle: true,
+                age: true,
+                ethnicity: true,
+                skinTone: true,
                 visualDescription: true,
+                facialFeatures: true,
+                visualSilhouetteDress: true,
+                voiceProfile: true,
+                voiceDescription: true,
+                costumeDescription: true,
+                mannerisms: true,
+                profilePhotoAssetId: true,
+                imagePrompt: true,
+                versions: {
+                  orderBy: [{ position: 'asc' }, { createdAt: 'asc' }],
+                },
               },
             },
           },
@@ -123,9 +137,10 @@ Use vivid, cinematic language. Be specific about camera work, lighting, mood, an
         });
 
     if (!providerConfig) {
+      // Restrict fallback to this series or explicitly global (seriesId: null) configs only.
       providerConfig = await this.prisma.llmProviderConfig.findFirst({
-        where: { isActive: true },
-        orderBy: { createdAt: 'asc' },
+        where: { isActive: true, OR: [{ seriesId }, { seriesId: null }] },
+        orderBy: [{ seriesId: 'desc' }, { createdAt: 'asc' }],
       });
     }
 
@@ -137,8 +152,20 @@ Use vivid, cinematic language. Be specific about camera work, lighting, mood, an
 
     // 3. Build entity map for display-name → externalId substitution
     const entityMap: Map<string, string | null> = new Map();
+    const storyOrder = await this.buildStoryOrder(seriesId);
+    const sceneOrder = storyOrder.get(`SCENE:${scene.id}`) ?? 0;
     for (const ce of clip.characters) {
-      entityMap.set(ce.entity.displayName, ce.entity.externalId ?? null);
+      const version = this.resolveCharacterVersion(
+        ce.entity.versions ?? [],
+        storyOrder,
+        sceneOrder,
+      );
+      (ce.entity as typeof ce.entity & { effectiveVersion?: any }).effectiveVersion =
+        version;
+      entityMap.set(
+        ce.entity.displayName,
+        version?.externalId ?? ce.entity.externalId ?? null,
+      );
     }
 
     // 4. Build user prompt with clip context
@@ -309,9 +336,35 @@ Use vivid, cinematic language. Be specific about camera work, lighting, mood, an
           .map(name => {
             const e = clip.characters.find((c: any) => c.entity.displayName === name)?.entity;
             if (!e) return `- ${name}`;
+            const v = e.effectiveVersion;
             const parts = [name, e.type, e.subtitle].filter(Boolean).join(' | ');
-            const desc = e.visualDescription ?? e.description ?? '';
-            return `- ${parts}${desc ? `\n  ${desc}` : ''}`;
+            const details = [
+              v ? `Story version: ${v.name}` : null,
+              v?.description ?? e.visualDescription ?? e.description,
+              `Age: ${v?.age ?? e.age ?? 20}`,
+              (v?.ethnicity ?? e.ethnicity)
+                ? `Ethnicity: ${v?.ethnicity ?? e.ethnicity}`
+                : null,
+              `Skin tone: ${v?.skinTone ?? e.skinTone ?? 'Fitzpatrick Type II Pinkish-ivory skin'}`,
+              (v?.facialFeatures ?? e.facialFeatures)
+                ? `Facial features: ${v?.facialFeatures ?? e.facialFeatures}`
+                : null,
+              (v?.visualSilhouetteDress ?? e.visualSilhouetteDress)
+                ? `Visual silhouette & dress: ${v?.visualSilhouetteDress ?? e.visualSilhouetteDress}`
+                : null,
+              (v?.costumeDescription ?? e.costumeDescription)
+                ? `Costume: ${v?.costumeDescription ?? e.costumeDescription}`
+                : null,
+              (v?.voiceProfile ?? e.voiceProfile)
+                ? `Voice profile: ${v?.voiceProfile ?? e.voiceProfile}`
+                : null,
+              v?.generatedPrompt
+                ? `Canonical version prompt: ${v.generatedPrompt}`
+                : e.imagePrompt
+                  ? `Canonical base prompt: ${e.imagePrompt}`
+                  : null,
+            ].filter(Boolean);
+            return `- ${parts}${details.length ? `\n  ${details.join('\n  ')}` : ''}`;
           })
           .join('\n')
       : 'None specified';
@@ -378,6 +431,74 @@ Return a JSON object with EXACTLY these fields:
    * Replaces [displayName] tokens in a prompt with the entity's externalId.
    * If externalId is null, the displayName is left as-is.
    */
+  private async buildStoryOrder(seriesId: string) {
+    const seasons = await this.prisma.season.findMany({
+      where: { seriesId },
+      orderBy: [{ position: 'asc' }, { number: 'asc' }],
+      include: {
+        episodes: {
+          orderBy: [{ position: 'asc' }, { number: 'asc' }],
+          include: {
+            acts: {
+              orderBy: [{ position: 'asc' }, { number: 'asc' }],
+              include: {
+                scenes: {
+                  orderBy: [{ position: 'asc' }, { number: 'asc' }],
+                  select: { id: true },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+    const order = new Map<string, number>();
+    let index = 1;
+    for (const season of seasons) {
+      order.set(`SEASON:${season.id}`, index++);
+      for (const episode of season.episodes) {
+        order.set(`EPISODE:${episode.id}`, index++);
+        for (const act of episode.acts) {
+          order.set(`ACT:${act.id}`, index++);
+          for (const scene of act.scenes) {
+            order.set(`SCENE:${scene.id}`, index++);
+            order.set(`END:SCENE:${scene.id}`, index - 1);
+          }
+          order.set(`END:ACT:${act.id}`, index - 1);
+        }
+        order.set(`END:EPISODE:${episode.id}`, index - 1);
+      }
+      order.set(`END:SEASON:${season.id}`, index - 1);
+    }
+    return order;
+  }
+
+  private resolveCharacterVersion(
+    versions: any[],
+    order: Map<string, number>,
+    targetOrder: number,
+  ) {
+    return versions
+      .map(version => ({
+        version,
+        start:
+          version.startType === 'SERIES'
+            ? 0
+            : order.get(`${version.startType}:${version.startId}`) ??
+              Number.POSITIVE_INFINITY,
+        end: !version.endType
+          ? Number.POSITIVE_INFINITY
+          : version.endType === 'SERIES'
+            ? Number.POSITIVE_INFINITY
+            : order.get(`END:${version.endType}:${version.endId}`) ?? -1,
+      }))
+      .filter(item => item.start <= targetOrder && targetOrder <= item.end)
+      .sort(
+        (a, b) =>
+          b.start - a.start || b.version.position - a.version.position,
+      )[0]?.version;
+  }
+
   private compilePrompt(
     prompt: string,
     entityMap: Map<string, string | null>,

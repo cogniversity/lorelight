@@ -9,11 +9,15 @@ import { SeriesRole } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ROLES_KEY } from '../decorators/roles.decorator';
 
-/** Numeric rank of each role — higher = more privilege. */
+/**
+ * Numeric rank of each role — higher = more privilege.
+ * Canonical order shared with SeriesMemberGuard:
+ *   VIEWER < PRODUCER < WRITER < ADMIN < OWNER
+ */
 const ROLE_RANK: Record<SeriesRole, number> = {
   VIEWER: 0,
-  WRITER: 1,
-  PRODUCER: 2,
+  PRODUCER: 1,
+  WRITER: 2,
   ADMIN: 3,
   OWNER: 4,
 };

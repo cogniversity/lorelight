@@ -2,6 +2,7 @@ import { PartialType } from '@nestjs/swagger';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ClipStatus } from '@prisma/client';
 import {
+  IsArray,
   IsEnum,
   IsInt,
   IsNotEmpty,
@@ -116,6 +117,12 @@ export class CreateClipDto {
   @IsOptional()
   @IsString()
   locationId?: string;
+
+  @ApiPropertyOptional({ type: [String], description: 'Searchable metadata tags' })
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tags?: string[];
 }
 
 export class UpdateClipDto extends PartialType(CreateClipDto) {}

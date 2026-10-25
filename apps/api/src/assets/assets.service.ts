@@ -17,8 +17,19 @@ import {
 import { Prisma } from '@prisma/client';
 
 type AssetWithUser = Prisma.AssetGetPayload<{
-  include: { uploadedBy: { select: { id: true; name: true } } };
-}>;
+  include: {
+    uploadedBy: { select: { id: true; name: true } };
+    entityLinks: true;
+    actLinks: true;
+    sceneLinks: true;
+    clipLinks: true;
+  };
+}> & { assignments?: any[] };
+
+type AssignmentTarget = {
+  targetType: 'ENTITY' | 'ACT' | 'SCENE' | 'CLIP';
+  targetId: string;
+};
 
 @Injectable()
 export class AssetsService {
@@ -36,6 +47,37 @@ export class AssetsService {
     userId: string,
     dto: InitiateUploadDto,
   ) {
+    const [entity, act, scene, clip] = await Promise.all([
+      dto.linkedEntityId
+        ? this.prisma.worldEntity.findFirst({
+            where: { id: dto.linkedEntityId, seriesId },
+            select: { id: true },
+          })
+        : null,
+      dto.linkedActId
+        ? this.prisma.act.findFirst({
+            where: { id: dto.linkedActId, episode: { season: { seriesId } } },
+            select: { id: true },
+          })
+        : null,
+      dto.linkedSceneId
+        ? this.prisma.scene.findFirst({
+            where: { id: dto.linkedSceneId, episode: { season: { seriesId } } },
+            select: { id: true },
+          })
+        : null,
+      dto.linkedClipId
+        ? this.prisma.clip.findFirst({
+            where: { id: dto.linkedClipId, scene: { episode: { season: { seriesId } } } },
+            select: { id: true },
+          })
+        : null,
+    ]);
+    if (dto.linkedEntityId && !entity) throw new BadRequestException('Linked entity is not in this series');
+    if (dto.linkedActId && !act) throw new BadRequestException('Linked act is not in this series');
+    if (dto.linkedSceneId && !scene) throw new BadRequestException('Linked scene is not in this series');
+    if (dto.linkedClipId && !clip) throw new BadRequestException('Linked clip is not in this series');
+
     // Create a placeholder record first to obtain the generated id
     const asset = await this.prisma.asset.create({
       data: {
@@ -46,10 +88,15 @@ export class AssetsService {
         title: dto.title ?? dto.filename,
         description: dto.description ?? null,
         tags: dto.tags ?? [],
+        versionNotes: dto.versionNotes ?? null,
+        isFinal: dto.isFinal ?? false,
         filename: dto.filename,
         storageKey: `assets/${seriesId}/__pending__/${dto.filename}`, // temporary
         mimeType: dto.mimeType,
         sizeBytes: dto.sizeBytes,
+        provenance: {
+          create: { source: 'UPLOAD' },
+        },
       },
     });
 
@@ -63,6 +110,13 @@ export class AssetsService {
       linkOps.push(
         this.prisma.assetEntityLink.create({
           data: { assetId: asset.id, entityId: dto.linkedEntityId },
+        }),
+      );
+    }
+    if (dto.linkedActId) {
+      linkOps.push(
+        this.prisma.assetActLink.create({
+          data: { assetId: asset.id, actId: dto.linkedActId },
         }),
       );
     }
@@ -93,6 +147,12 @@ export class AssetsService {
   async completeUpload(seriesId: string, dto: CompleteUploadDto) {
     const asset = await this.prisma.asset.findFirst({
       where: { id: dto.assetId, seriesId },
+      include: {
+        entityLinks: true,
+        actLinks: true,
+        sceneLinks: true,
+        clipLinks: true,
+      },
     });
     if (!asset) throw new NotFoundException('Asset not found');
     if (asset.status !== 'PENDING') {
@@ -106,10 +166,28 @@ export class AssetsService {
       );
     }
 
-    const updated = await this.prisma.asset.update({
-      where: { id: asset.id },
-      data: { status: 'UPLOADED' },
-      include: { uploadedBy: { select: { id: true, name: true } } },
+    const updated = await this.prisma.$transaction(async tx => {
+      if (asset.isFinal) {
+        await this.assignFinalProductionMedia(
+          tx,
+          seriesId,
+          asset.id,
+          this.assignmentTargets(asset),
+        );
+      }
+      return tx.asset.update({
+        where: { id: asset.id },
+        data: { status: 'UPLOADED' },
+        include: {
+          uploadedBy: { select: { id: true, name: true } },
+          entityLinks: true,
+          actLinks: true,
+          sceneLinks: true,
+          clipLinks: true,
+          assignments: true,
+          provenance: true,
+        },
+      });
     });
 
     return this.toDto(updated);
@@ -138,7 +216,15 @@ export class AssetsService {
         skip,
         take: limit,
         orderBy: { createdAt: 'desc' },
-        include: { uploadedBy: { select: { id: true, name: true } } },
+        include: {
+          uploadedBy: { select: { id: true, name: true } },
+          entityLinks: true,
+          actLinks: true,
+          sceneLinks: true,
+          clipLinks: true,
+          assignments: true,
+          provenance: true,
+        },
       }),
       this.prisma.asset.count({ where }),
     ]);
@@ -154,6 +240,12 @@ export class AssetsService {
       include: {
         uploadedBy: { select: { id: true, name: true } },
         variants: { orderBy: { label: 'desc' } },
+        entityLinks: true,
+        actLinks: true,
+        sceneLinks: true,
+        clipLinks: true,
+        assignments: true,
+        provenance: true,
       },
     });
     if (!asset) throw new NotFoundException('Asset not found');
@@ -168,6 +260,30 @@ export class AssetsService {
     }
 
     return this.toDto(asset, downloadUrl);
+  }
+
+  async getDownload(seriesId: string, assetId: string) {
+    const asset = await this.prisma.asset.findFirst({
+      where: { id: assetId, seriesId },
+      select: {
+        storageKey: true,
+        filename: true,
+        status: true,
+      },
+    });
+    if (!asset) throw new NotFoundException('Asset not found');
+    if (asset.status === 'PENDING') {
+      throw new BadRequestException('Asset upload is not complete');
+    }
+    return {
+      filename: asset.filename,
+      downloadUrl: await this.minio.presignedDownloadUrl(
+        asset.storageKey,
+        asset.filename,
+        300,
+      ),
+      expiresIn: 300,
+    };
   }
 
   // ── Asset Versions ───────────────────────────────────────────────────────
@@ -227,7 +343,15 @@ export class AssetsService {
           sizeBytes: stat.size,
           status: 'UPLOADED',
         },
-        include: { uploadedBy: { select: { id: true, name: true } } },
+        include: {
+          uploadedBy: { select: { id: true, name: true } },
+          entityLinks: true,
+          actLinks: true,
+          sceneLinks: true,
+          clipLinks: true,
+          assignments: true,
+          provenance: true,
+        },
       });
     });
 
@@ -243,21 +367,195 @@ export class AssetsService {
   ) {
     const existing = await this.prisma.asset.findFirst({
       where: { id: assetId, seriesId },
+      include: {
+        entityLinks: true,
+        actLinks: true,
+        sceneLinks: true,
+        clipLinks: true,
+        assignments: true,
+        provenance: true,
+      },
     });
     if (!existing) throw new NotFoundException('Asset not found');
 
-    const updated = await this.prisma.asset.update({
-      where: { id: assetId },
-      data: {
-        ...(dto.title !== undefined && { title: dto.title }),
-        ...(dto.description !== undefined && { description: dto.description }),
-        ...(dto.tags !== undefined && { tags: dto.tags }),
-        ...(dto.status !== undefined && { status: dto.status }),
-      },
-      include: { uploadedBy: { select: { id: true, name: true } } },
+    const updated = await this.prisma.$transaction(async tx => {
+      if (dto.isFinal === true) {
+        await this.assignFinalProductionMedia(
+          tx,
+          seriesId,
+          assetId,
+          this.assignmentTargets(existing),
+        );
+      } else if (dto.isFinal === false && existing.isFinal) {
+        await tx.assetAssignment.updateMany({
+          where: {
+            assetId,
+            seriesId,
+            role: 'PRODUCTION_MEDIA',
+            status: 'ASSIGNED',
+          },
+          data: {
+            status: 'ABANDONED',
+            replacementNote: `Final selection removed on ${new Date().toISOString()}.`,
+          },
+        });
+      }
+
+      return tx.asset.update({
+        where: { id: assetId },
+        data: {
+          ...(dto.title !== undefined && { title: dto.title }),
+          ...(dto.description !== undefined && { description: dto.description }),
+          ...(dto.tags !== undefined && { tags: dto.tags }),
+          ...(dto.status !== undefined && { status: dto.status }),
+          ...(dto.versionNotes !== undefined && { versionNotes: dto.versionNotes }),
+          ...(dto.isFinal !== undefined && { isFinal: dto.isFinal }),
+        },
+        include: {
+          uploadedBy: { select: { id: true, name: true } },
+          entityLinks: true,
+          actLinks: true,
+          sceneLinks: true,
+          clipLinks: true,
+          assignments: true,
+          provenance: true,
+        },
+      });
     });
 
     return this.toDto(updated);
+  }
+
+  // ── Assignment History ───────────────────────────────────────────────────
+
+  async getAssignmentHistory(seriesId: string, assetId: string) {
+    const asset = await this.prisma.asset.findFirst({
+      where: { id: assetId, seriesId },
+      select: { id: true },
+    });
+    if (!asset) throw new NotFoundException('Asset not found');
+
+    const assignments = await this.prisma.assetAssignment.findMany({
+      where: { assetId, seriesId },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    return assignments.map(a => ({
+      id: a.id,
+      role: a.role,
+      status: a.status,
+      targetType: a.targetType,
+      targetId: a.targetId,
+      note: a.replacementNote,
+      replacedByAssetId: a.replacedByAssetId,
+      createdAt: a.createdAt.toISOString(),
+      updatedAt: a.updatedAt.toISOString(),
+    }));
+  }
+
+  async getEntityAssetAssignments(seriesId: string, entityId: string) {
+    const entity = await this.prisma.worldEntity.findFirst({
+      where: { id: entityId, seriesId },
+      select: { id: true },
+    });
+    if (!entity) throw new NotFoundException('Entity not found');
+
+    const assignments = await this.prisma.assetAssignment.findMany({
+      where: { seriesId, targetType: 'ENTITY', targetId: entityId },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        asset: {
+          select: {
+            id: true,
+            title: true,
+            type: true,
+            filename: true,
+            mimeType: true,
+            provenance: true,
+            createdAt: true,
+          },
+        },
+      },
+    });
+
+    return assignments.map(a => ({
+      id: a.id,
+      role: a.role,
+      status: a.status,
+      targetType: a.targetType,
+      targetId: a.targetId,
+      note: a.replacementNote,
+      replacedByAssetId: a.replacedByAssetId,
+      createdAt: a.createdAt.toISOString(),
+      updatedAt: a.updatedAt.toISOString(),
+      asset: a.asset
+        ? {
+            id: a.asset.id,
+            title: a.asset.title,
+            type: a.asset.type,
+            filename: a.asset.filename,
+            mimeType: a.asset.mimeType,
+            source: a.asset.provenance?.source ?? 'UPLOAD',
+            generationProvider: a.asset.provenance?.provider,
+            generationModel: a.asset.provenance?.model,
+            generationRequestId: a.asset.provenance?.requestId,
+            createdAt: a.asset.createdAt.toISOString(),
+          }
+        : null,
+    }));
+  }
+
+  async abandonAssignment(
+    seriesId: string,
+    assetId: string,
+    assignmentId: string,
+    note?: string,
+  ) {
+    const assignment = await this.prisma.assetAssignment.findFirst({
+      where: { id: assignmentId, assetId, seriesId },
+    });
+    if (!assignment) throw new NotFoundException('Asset assignment not found');
+    if (assignment.status === 'ABANDONED') return assignment;
+
+    return this.prisma.$transaction(async tx => {
+      if (assignment.targetType === 'ENTITY') {
+        const data =
+          assignment.role === 'PROFILE_PHOTO'
+            ? { profilePhotoAssetId: null }
+            : assignment.role === 'VOICE_SAMPLE'
+              ? { voiceSampleAssetId: null }
+              : assignment.role === 'REFERENCE_IMAGE'
+                ? { referenceImageAssetId: null }
+                : {};
+        if (Object.keys(data).length) {
+          await tx.worldEntity.updateMany({
+            where: { id: assignment.targetId, seriesId },
+            data,
+          });
+        }
+      } else if (
+        assignment.targetType === 'ENTITY_VERSION' &&
+        assignment.role === 'VERSION_IMAGE'
+      ) {
+        await tx.worldEntityVersion.updateMany({
+          where: {
+            id: assignment.targetId,
+            entity: { seriesId },
+            imageAssetId: assetId,
+          },
+          data: { imageAssetId: null, inheritMainImage: true },
+        });
+      }
+      return tx.assetAssignment.update({
+        where: { id: assignmentId },
+        data: {
+          status: 'ABANDONED',
+          replacementNote:
+            note?.trim() ||
+            `Manually abandoned on ${new Date().toISOString()}.`,
+        },
+      });
+    });
   }
 
   // ── Delete Asset ─────────────────────────────────────────────────────────
@@ -277,13 +575,105 @@ export class AssetsService {
       );
     }
 
-    await this.prisma.asset.delete({ where: { id: assetId } });
+    await this.prisma.$transaction([
+      this.prisma.assetAssignment.updateMany({
+        where: { replacedByAssetId: assetId },
+        data: { replacedByAssetId: null },
+      }),
+      this.prisma.asset.delete({ where: { id: assetId } }),
+    ]);
     return { deleted: true, assetId };
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 
+  private assignmentTargets(asset: {
+    entityLinks: Array<{ entityId: string }>;
+    actLinks: Array<{ actId: string }>;
+    sceneLinks: Array<{ sceneId: string }>;
+    clipLinks: Array<{ clipId: string }>;
+  }): AssignmentTarget[] {
+    return [
+      ...asset.entityLinks.map(link => ({
+        targetType: 'ENTITY' as const,
+        targetId: link.entityId,
+      })),
+      ...asset.actLinks.map(link => ({
+        targetType: 'ACT' as const,
+        targetId: link.actId,
+      })),
+      ...asset.sceneLinks.map(link => ({
+        targetType: 'SCENE' as const,
+        targetId: link.sceneId,
+      })),
+      ...asset.clipLinks.map(link => ({
+        targetType: 'CLIP' as const,
+        targetId: link.clipId,
+      })),
+    ];
+  }
+
+  private async assignFinalProductionMedia(
+    tx: Prisma.TransactionClient,
+    seriesId: string,
+    assetId: string,
+    targets: AssignmentTarget[],
+  ) {
+    if (!targets.length) return;
+
+    await tx.asset.updateMany({
+      where: {
+        id: { not: assetId },
+        seriesId,
+        OR: targets.map(target => {
+          switch (target.targetType) {
+            case 'ENTITY':
+              return { entityLinks: { some: { entityId: target.targetId } } };
+            case 'ACT':
+              return { actLinks: { some: { actId: target.targetId } } };
+            case 'SCENE':
+              return { sceneLinks: { some: { sceneId: target.targetId } } };
+            case 'CLIP':
+              return { clipLinks: { some: { clipId: target.targetId } } };
+          }
+        }),
+      },
+      data: { isFinal: false },
+    });
+
+    for (const target of targets) {
+      const current = await tx.assetAssignment.findFirst({
+        where: {
+          seriesId,
+          ...target,
+          role: 'PRODUCTION_MEDIA',
+          status: 'ASSIGNED',
+        },
+      });
+      if (current?.assetId === assetId) continue;
+      if (current) {
+        await tx.assetAssignment.update({
+          where: { id: current.id },
+          data: {
+            status: 'ABANDONED',
+            replacedByAssetId: assetId,
+            replacementNote: `Replaced by final asset ${assetId}.`,
+          },
+        });
+      }
+      await tx.assetAssignment.create({
+        data: {
+          assetId,
+          seriesId,
+          ...target,
+          role: 'PRODUCTION_MEDIA',
+        },
+      });
+    }
+  }
+
   private toDto(asset: AssetWithUser, downloadUrl?: string) {
+    const a = asset as any;
     return {
       id: asset.id,
       seriesId: asset.seriesId,
@@ -296,6 +686,30 @@ export class AssetsService {
       mimeType: asset.mimeType,
       sizeBytes: Number(asset.sizeBytes),
       version: asset.version,
+      versionNotes: asset.versionNotes ?? undefined,
+      isFinal: asset.isFinal,
+      // Provenance
+      source: a.provenance?.source ?? 'UPLOAD',
+      generationPrompt: a.provenance?.prompt ?? undefined,
+      generationProvider: a.provenance?.provider ?? undefined,
+      generationModel: a.provenance?.model ?? undefined,
+      generationRequestId: a.provenance?.requestId ?? undefined,
+      generationDurationSec: a.provenance?.durationSeconds ?? undefined,
+      entityIds: asset.entityLinks?.map(link => link.entityId) ?? [],
+      actIds: asset.actLinks?.map(link => link.actId) ?? [],
+      sceneIds: asset.sceneLinks?.map(link => link.sceneId) ?? [],
+      clipIds: asset.clipLinks?.map(link => link.clipId) ?? [],
+      assignments: a.assignments?.map((assignment: any) => ({
+        id: assignment.id,
+        role: assignment.role,
+        status: assignment.status,
+        targetType: assignment.targetType,
+        targetId: assignment.targetId,
+        note: assignment.replacementNote ?? undefined,
+        replacedByAssetId: assignment.replacedByAssetId ?? undefined,
+        createdAt: assignment.createdAt.toISOString(),
+        updatedAt: assignment.updatedAt.toISOString(),
+      })) ?? [],
       versions: (
         asset as AssetWithUser & {
           variants?: Array<{

@@ -12,6 +12,7 @@ import { useSeriesContext } from "../layouts/SeriesLayout";
 import { StatusPill } from "../components/StatusPill";
 import { Progress } from "../components/Progress";
 import { Skeleton } from "../components/Skeleton";
+import ItemMediaPanel from "../components/ItemMediaPanel";
 
 export default function EpisodesPage() {
   const { seriesId } = useSeriesContext();
@@ -157,6 +158,13 @@ export default function EpisodesPage() {
                   </div>
                   <MoreHorizontal size={17} />
                 </div>
+                <ItemMediaPanel
+                  seriesId={seriesId}
+                  targetKind="act"
+                  targetId={act.id}
+                  title={act.title}
+                  currentTags={act.tags}
+                />
                 {act.scenes.map((sc) => (
                   <button
                     key={sc.id}

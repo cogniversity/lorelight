@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsNumber,
   IsArray,
+  IsBoolean,
   Min,
 } from 'class-validator';
 import { AssetType } from '@prisma/client';
@@ -43,10 +44,25 @@ export class InitiateUploadDto {
   @IsString({ each: true })
   tags?: string[];
 
+  @ApiPropertyOptional({ description: 'Optional notes for this draft/final version' })
+  @IsOptional()
+  @IsString()
+  versionNotes?: string;
+
+  @ApiPropertyOptional({ description: 'Whether this is the selected final media version' })
+  @IsOptional()
+  @IsBoolean()
+  isFinal?: boolean;
+
   @ApiPropertyOptional({ description: 'Link to a WorldEntity' })
   @IsOptional()
   @IsString()
   linkedEntityId?: string;
+
+  @ApiPropertyOptional({ description: 'Link to an Act' })
+  @IsOptional()
+  @IsString()
+  linkedActId?: string;
 
   @ApiPropertyOptional({ description: 'Link to a Scene' })
   @IsOptional()

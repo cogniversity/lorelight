@@ -5,6 +5,7 @@ import { manuscriptApi, Scene } from "../api/client";
 import { useSeriesContext } from "../layouts/SeriesLayout";
 import { StatusPill } from "../components/StatusPill";
 import { Skeleton } from "../components/Skeleton";
+import ItemMediaPanel from "../components/ItemMediaPanel";
 
 export default function SceneDetailPage() {
   const { seriesId } = useSeriesContext();
@@ -68,6 +69,15 @@ export default function SceneDetailPage() {
             </div>
             <StatusPill status={foundScene.status} />
           </section>
+
+          <ItemMediaPanel
+            seriesId={seriesId}
+            targetKind="scene"
+            targetId={foundScene.id}
+            title={foundScene.title}
+            currentTags={foundScene.tags}
+            initiallyOpen
+          />
 
           {foundScene.clips && foundScene.clips.length > 0 && (
             <div className="panel" style={{ padding: "22px 26px", marginTop: 18 }}>
